@@ -1,8 +1,13 @@
 """Album search and retrieval endpoints."""
 
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Depends, Query, HTTPException
+from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from backend.app.schemas.album import AlbumSearchResult, AlbumSearchResponse
+from backend.app.core.database import get_db
+from backend.app.models.album import Album
+from backend.app.schemas.album import AlbumSearchResult, AlbumSearchResponse, AlbumOut, AlbumListResponse
 from backend.app.services.musicbrainz import musicbrainz_client
 
 router = APIRouter(prefix="/albums", tags=["albums"])
@@ -45,10 +50,63 @@ async def search_albums(
         raise HTTPException(status_code=503, detail=f"MusicBrainz API error: {str(e)}")
 
 
+@router.get("/db/list", response_model=AlbumListResponse)
+async def list_albums(
+    db: AsyncSession = Depends(get_db),
+    limit: int = Query(20, ge=1, le=100, description="Number of albums to return"),
+    offset: int = Query(0, ge=0, description="Number of albums to skip"),
+    sort_by: str = Query("rating_count", description="Sort by: rating_count, community_mean, title, release_year"),
+) -> AlbumListResponse:
+    """
+    List albums from local database.
+
+    Returns albums that have been rated by users, sorted by popularity or rating.
+    """
+    # Get total count
+    count_result = await db.execute(select(func.count(Album.id)))
+    total = count_result.scalar() or 0
+
+    # Build query with sorting
+    query = select(Album).options(selectinload(Album.artists))
+
+    if sort_by == "community_mean":
+        query = query.order_by(Album.community_mean.desc().nullslast())
+    elif sort_by == "title":
+        query = query.order_by(Album.title.asc())
+    elif sort_by == "release_year":
+        query = query.order_by(Album.release_year.desc().nullslast())
+    else:  # default: rating_count
+        query = query.order_by(Album.rating_count.desc())
+
+    query = query.limit(limit).offset(offset)
+
+    result = await db.execute(query)
+    albums = result.scalars().all()
+
+    return AlbumListResponse(
+        albums=[
+            AlbumOut(
+                id=a.id,
+                mbid=a.mbid,
+                title=a.title,
+                release_year=a.release_year,
+                cover_url=a.cover_url,
+                artist_name=a.artists[0].name if a.artists else None,
+                community_mean=a.community_mean,
+                rating_count=a.rating_count,
+            )
+            for a in albums
+        ],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
 @router.get("/{mbid}", response_model=AlbumSearchResult)
 async def get_album(mbid: str) -> AlbumSearchResult:
     """
-    Get album details by MusicBrainz ID.
+    Get album details by MusicBrainz ID from MusicBrainz API.
 
     Returns album metadata including cover art URL.
     """

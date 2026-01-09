@@ -32,3 +32,11 @@ class AlbumOut(BaseModel):
     rating_count: int = 0
 
     model_config = {"from_attributes": True}
+
+
+class AlbumListResponse(BaseModel):
+    """Response for album listing endpoint."""
+    albums: list[AlbumOut]
+    total: int
+    limit: int
+    offset: int

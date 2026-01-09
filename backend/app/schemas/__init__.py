@@ -1,10 +1,15 @@
 from backend.app.schemas.album import AlbumSearchResult, AlbumSearchResponse, AlbumOut
+from backend.app.schemas.auth import Token, UserLogin, UserOut, UserRegister
 from backend.app.schemas.rating import RatingCreate, RatingOut, RatingListResponse
 
 __all__ = [
     "AlbumSearchResult",
     "AlbumSearchResponse",
     "AlbumOut",
+    "Token",
+    "UserLogin",
+    "UserOut",
+    "UserRegister",
     "RatingCreate",
     "RatingOut",
     "RatingListResponse",
