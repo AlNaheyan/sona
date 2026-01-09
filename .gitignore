@@ -57,3 +57,7 @@ logs/
 # Database
 *.db
 *.sqlite3
+
+
+CLAUDE.md
+plan.md
