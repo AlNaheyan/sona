@@ -1,7 +1,12 @@
 """Pydantic schemas for rating operations."""
 
+from typing import Literal
 from pydantic import BaseModel, Field
 
+
+# ============================================================================
+# Numeric Rating Schemas
+# ============================================================================
 
 class RatingCreate(BaseModel):
     """Request to rate an album."""
@@ -28,4 +33,39 @@ class RatingOut(BaseModel):
 class RatingListResponse(BaseModel):
     """Response for listing user's ratings."""
     ratings: list[RatingOut]
+    count: int
+
+
+# ============================================================================
+# Pairwise Comparison Schemas
+# ============================================================================
+
+class ComparisonCreate(BaseModel):
+    """Request to create a pairwise comparison between two albums."""
+    mbid_a: str = Field(..., description="MusicBrainz ID of album A")
+    mbid_b: str = Field(..., description="MusicBrainz ID of album B")
+    winner: Literal["a", "b", "tie"] = Field(..., description="Which album is preferred: 'a', 'b', or 'tie'")
+
+
+class ComparisonOut(BaseModel):
+    """A pairwise comparison between two albums."""
+    id: str
+    album_a_id: str
+    album_a_title: str
+    album_a_artist: str | None
+    album_a_cover_url: str | None
+    album_b_id: str
+    album_b_title: str
+    album_b_artist: str | None
+    album_b_cover_url: str | None
+    winner: Literal["a", "b", "tie"]
+    created_at: str
+    updated_at: str
+
+    model_config = {"from_attributes": True}
+
+
+class ComparisonListResponse(BaseModel):
+    """Response for listing user's comparisons."""
+    comparisons: list[ComparisonOut]
     count: int
