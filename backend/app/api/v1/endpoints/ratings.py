@@ -11,6 +11,7 @@ from backend.app.models.rating import NumericRating
 from backend.app.models.user import User
 from backend.app.schemas.rating import RatingCreate, RatingOut, RatingListResponse
 from backend.app.services.musicbrainz import musicbrainz_client
+from backend.app.services.cwpr import compute_preference
 
 router = APIRouter(prefix="/ratings", tags=["ratings"])
 
@@ -95,6 +96,9 @@ async def rate_album(
 
     await db.flush()
     await db.refresh(db_rating)
+
+    # Update CWPR preference score
+    await compute_preference(db, current_user.id, album.id)
 
     # Get artist name for response
     artist_name = None
@@ -186,5 +190,10 @@ async def delete_rating(
     if not rating:
         raise HTTPException(status_code=404, detail="Rating not found")
 
+    album_id = rating.album_id
     await db.delete(rating)
+
+    # Recompute CWPR preference score after deletion
+    await compute_preference(db, current_user.id, album_id)
+
     return {"status": "deleted"}

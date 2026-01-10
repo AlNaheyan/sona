@@ -13,6 +13,7 @@ from backend.app.schemas.rating import ComparisonCreate, ComparisonOut, Comparis
 
 # Reuse the get_or_create_album helper from ratings
 from backend.app.api.v1.endpoints.ratings import get_or_create_album
+from backend.app.services.cwpr import compute_preference
 
 router = APIRouter(prefix="/comparisons", tags=["comparisons"])
 
@@ -65,6 +66,10 @@ async def create_comparison(
     db.add(db_comparison)
     await db.flush()
     await db.refresh(db_comparison)
+
+    # Update CWPR preference scores for both albums
+    await compute_preference(db, current_user.id, album_a.id)
+    await compute_preference(db, current_user.id, album_b.id)
 
     # Get artist names for response
     artist_a_name = album_a.artists[0].name if album_a.artists else None
@@ -163,5 +168,12 @@ async def delete_comparison(
     if not comparison:
         raise HTTPException(status_code=404, detail="Comparison not found")
 
+    album_a_id = comparison.album_a_id
+    album_b_id = comparison.album_b_id
     await db.delete(comparison)
+
+    # Recompute CWPR preference scores for both albums
+    await compute_preference(db, current_user.id, album_a_id)
+    await compute_preference(db, current_user.id, album_b_id)
+
     return {"status": "deleted"}

@@ -18,6 +18,7 @@ from backend.app.schemas.rating import (
 
 # Reuse the get_or_create_album helper from ratings
 from backend.app.api.v1.endpoints.ratings import get_or_create_album
+from backend.app.services.cwpr import compute_preference
 
 router = APIRouter(prefix="/tiers", tags=["tiers"])
 
@@ -67,6 +68,9 @@ async def place_album_in_tier(
 
     await db.flush()
     await db.refresh(db_placement)
+
+    # Update CWPR preference score
+    await compute_preference(db, current_user.id, album.id)
 
     # Get artist name for response
     artist_name = album.artists[0].name if album.artists else None
@@ -162,5 +166,10 @@ async def remove_from_tier_list(
     if not placement:
         raise HTTPException(status_code=404, detail="Tier placement not found")
 
+    album_id = placement.album_id
     await db.delete(placement)
+
+    # Recompute CWPR preference score after deletion
+    await compute_preference(db, current_user.id, album_id)
+
     return {"status": "deleted"}

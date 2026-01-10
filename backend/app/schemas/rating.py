@@ -110,3 +110,30 @@ class TierListResponse(BaseModel):
     """User's complete tier list grouped by tier."""
     tiers: list[TierGroup]
     total_count: int
+
+
+# ============================================================================
+# Personal Rankings Schemas (CWPR-based)
+# ============================================================================
+
+class RankedAlbumOut(BaseModel):
+    """An album with its CWPR ranking information."""
+    rank: int
+    album_id: str
+    album_title: str
+    album_artist: str | None
+    album_cover_url: str | None
+    mu: float = Field(..., description="Mean preference estimate (μ)")
+    sigma: float = Field(..., description="Uncertainty (σ)")
+    score: float = Field(..., description="CWPR score (μ - λσ)")
+    numeric_count: int = Field(..., description="Number of numeric ratings")
+    pairwise_count: int = Field(..., description="Number of pairwise comparisons")
+    tier_count: int = Field(..., description="Number of tier placements")
+
+    model_config = {"from_attributes": True}
+
+
+class PersonalRankingsResponse(BaseModel):
+    """User's personal album rankings based on CWPR scores."""
+    rankings: list[RankedAlbumOut]
+    count: int
