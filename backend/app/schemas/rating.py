@@ -69,3 +69,44 @@ class ComparisonListResponse(BaseModel):
     """Response for listing user's comparisons."""
     comparisons: list[ComparisonOut]
     count: int
+
+
+# ============================================================================
+# Tier List Schemas
+# ============================================================================
+
+TierValue = Literal["S", "A", "B", "C", "D", "F"]
+
+
+class TierPlacementCreate(BaseModel):
+    """Request to place an album in a tier."""
+    mbid: str = Field(..., description="MusicBrainz ID of the album")
+    tier: TierValue = Field(..., description="Tier: S, A, B, C, D, or F")
+    position: int = Field(0, ge=0, description="Position within the tier (0 = first)")
+
+
+class TierPlacementOut(BaseModel):
+    """An album's placement in a tier list."""
+    id: str
+    album_id: str
+    album_title: str
+    album_artist: str | None
+    album_cover_url: str | None
+    tier: TierValue
+    position: int
+    created_at: str
+    updated_at: str
+
+    model_config = {"from_attributes": True}
+
+
+class TierGroup(BaseModel):
+    """A group of albums in a single tier."""
+    tier: TierValue
+    albums: list[TierPlacementOut]
+
+
+class TierListResponse(BaseModel):
+    """User's complete tier list grouped by tier."""
+    tiers: list[TierGroup]
+    total_count: int
