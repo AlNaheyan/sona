@@ -20,11 +20,8 @@ class User(Base, UUIDMixin, TimestampMixin):
     pairwise_comparisons: Mapped[list["PairwiseComparison"]] = relationship(
         "PairwiseComparison", back_populates="user", cascade="all, delete-orphan"
     )
-    tier_placements: Mapped[list["TierPlacement"]] = relationship(
-        "TierPlacement", back_populates="user", cascade="all, delete-orphan"
-    )
-    preferences: Mapped[list["UserAlbumPreference"]] = relationship(
-        "UserAlbumPreference", back_populates="user", cascade="all, delete-orphan"
+    album_elos: Mapped[list["UserAlbumElo"]] = relationship(
+        "UserAlbumElo", back_populates="user", cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:
@@ -35,6 +32,5 @@ class User(Base, UUIDMixin, TimestampMixin):
 from backend.app.models.rating import (
     NumericRating,
     PairwiseComparison,
-    TierPlacement,
-    UserAlbumPreference,
+    UserAlbumElo,
 )

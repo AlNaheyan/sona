@@ -72,68 +72,24 @@ class ComparisonListResponse(BaseModel):
 
 
 # ============================================================================
-# Tier List Schemas
-# ============================================================================
-
-TierValue = Literal["S", "A", "B", "C", "D", "F"]
-
-
-class TierPlacementCreate(BaseModel):
-    """Request to place an album in a tier."""
-    mbid: str = Field(..., description="MusicBrainz ID of the album")
-    tier: TierValue = Field(..., description="Tier: S, A, B, C, D, or F")
-    position: int = Field(0, ge=0, description="Position within the tier (0 = first)")
-
-
-class TierPlacementOut(BaseModel):
-    """An album's placement in a tier list."""
-    id: str
-    album_id: str
-    album_title: str
-    album_artist: str | None
-    album_cover_url: str | None
-    tier: TierValue
-    position: int
-    created_at: str
-    updated_at: str
-
-    model_config = {"from_attributes": True}
-
-
-class TierGroup(BaseModel):
-    """A group of albums in a single tier."""
-    tier: TierValue
-    albums: list[TierPlacementOut]
-
-
-class TierListResponse(BaseModel):
-    """User's complete tier list grouped by tier."""
-    tiers: list[TierGroup]
-    total_count: int
-
-
-# ============================================================================
-# Personal Rankings Schemas (CWPR-based)
+# Personal Rankings Schemas (Elo-based)
 # ============================================================================
 
 class RankedAlbumOut(BaseModel):
-    """An album with its CWPR ranking information."""
+    """An album with its Elo ranking information."""
     rank: int
     album_id: str
     album_title: str
     album_artist: str | None
     album_cover_url: str | None
-    mu: float = Field(..., description="Mean preference estimate (μ)")
-    sigma: float = Field(..., description="Uncertainty (σ)")
-    score: float = Field(..., description="CWPR score (μ - λσ)")
-    numeric_count: int = Field(..., description="Number of numeric ratings")
-    pairwise_count: int = Field(..., description="Number of pairwise comparisons")
-    tier_count: int = Field(..., description="Number of tier placements")
+    elo: float = Field(..., description="Elo rating score")
+    rating_count: int = Field(..., description="Number of numeric ratings")
+    comparison_count: int = Field(..., description="Number of pairwise comparisons")
 
     model_config = {"from_attributes": True}
 
 
 class PersonalRankingsResponse(BaseModel):
-    """User's personal album rankings based on CWPR scores."""
+    """User's personal album rankings sorted by Elo score."""
     rankings: list[RankedAlbumOut]
     count: int

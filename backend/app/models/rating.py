@@ -1,18 +1,14 @@
 """
-CWPR (Confidence-Weighted Preference Ranking) Rating Models
+Elo-based Personal Ranking Models
 
-Supports three input types that are unified into a preference score:
-1. Numeric ratings (1-10)
-2. Pairwise comparisons (A vs B)
-3. Tier placements (S, A, B, C, D, F)
+The ranking system uses Elo scores as the canonical personal ranking.
+Two input types feed into Elo updates:
+1. Numeric ratings (1-10) - weak Elo signal
+2. Pairwise comparisons (A vs B) - strong Elo signal
 
-Each input type updates the UserAlbumPreference which stores:
-- mu (μ): mean preference score
-- sigma (σ): uncertainty/confidence
-- score: μ - λσ (the ranking score)
+Each input type triggers an Elo update on the UserAlbumElo record.
+Rankings are determined by sorting albums by their Elo score.
 """
-
-from enum import Enum
 
 from sqlalchemy import String, Integer, Float, ForeignKey, Boolean, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -20,21 +16,12 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.app.models.base import Base, TimestampMixin, UUIDMixin
 
 
-class Tier(str, Enum):
-    S = "S"  # 10.0
-    A = "A"  # 8.0
-    B = "B"  # 6.0
-    C = "C"  # 4.0
-    D = "D"  # 2.0
-    F = "F"  # 0.0
-
-    def to_numeric(self) -> float:
-        mapping = {"S": 10.0, "A": 8.0, "B": 6.0, "C": 4.0, "D": 2.0, "F": 0.0}
-        return mapping[self.value]
+# Default Elo values
+DEFAULT_ELO = 1500.0
 
 
 class NumericRating(Base, UUIDMixin, TimestampMixin):
-    """Direct 1-10 rating of an album."""
+    """Direct 1-10 rating of an album (weak Elo signal)."""
 
     __tablename__ = "numeric_ratings"
     __table_args__ = (UniqueConstraint("user_id", "album_id", name="uq_numeric_rating_user_album"),)
@@ -56,7 +43,7 @@ class NumericRating(Base, UUIDMixin, TimestampMixin):
 
 
 class PairwiseComparison(Base, UUIDMixin, TimestampMixin):
-    """Comparison between two albums: which does the user prefer?"""
+    """Comparison between two albums (strong Elo signal)."""
 
     __tablename__ = "pairwise_comparisons"
 
@@ -77,61 +64,37 @@ class PairwiseComparison(Base, UUIDMixin, TimestampMixin):
         return f"<PairwiseComparison {self.album_a_id} vs {self.album_b_id} winner={winner}>"
 
 
-class TierPlacement(Base, UUIDMixin, TimestampMixin):
-    """Placement of an album in a tier list."""
-
-    __tablename__ = "tier_placements"
-    __table_args__ = (UniqueConstraint("user_id", "album_id", name="uq_tier_placement_user_album"),)
-
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
-    album_id: Mapped[str] = mapped_column(ForeignKey("albums.id"), nullable=False, index=True)
-    tier: Mapped[str] = mapped_column(String(1), nullable=False)  # S, A, B, C, D, F
-
-    # Position within tier (for ordering)
-    position: Mapped[int] = mapped_column(Integer, default=0)
-
-    # Relationships
-    user: Mapped["User"] = relationship("User", back_populates="tier_placements")
-    album: Mapped["Album"] = relationship("Album")
-
-    def __repr__(self) -> str:
-        return f"<TierPlacement user={self.user_id} album={self.album_id} tier={self.tier}>"
-
-
-class UserAlbumPreference(Base, UUIDMixin, TimestampMixin):
+class UserAlbumElo(Base, UUIDMixin, TimestampMixin):
     """
-    Computed CWPR preference for a user-album pair.
+    Elo rating for a user-album pair.
 
-    This aggregates all input types (numeric, pairwise, tier) into:
-    - mu (μ): mean preference estimate
-    - sigma (σ): uncertainty in the estimate
-    - score: μ - λσ (used for ranking)
+    This is the canonical personal ranking value.
+    Albums are ranked by sorting Elo scores in descending order.
 
-    Updated whenever any rating input changes.
+    Elo updates come from:
+    - Pairwise comparisons (K=32, strong signal)
+    - Numeric ratings (K=16, weak signal, relative to user average)
     """
 
-    __tablename__ = "user_album_preferences"
-    __table_args__ = (UniqueConstraint("user_id", "album_id", name="uq_preference_user_album"),)
+    __tablename__ = "user_album_elo"
+    __table_args__ = (UniqueConstraint("user_id", "album_id", name="uq_elo_user_album"),)
 
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     album_id: Mapped[str] = mapped_column(ForeignKey("albums.id"), nullable=False, index=True)
 
-    # CWPR values
-    mu: Mapped[float] = mapped_column(Float, nullable=False, default=5.0)  # Mean preference
-    sigma: Mapped[float] = mapped_column(Float, nullable=False, default=2.5)  # Uncertainty
-    score: Mapped[float] = mapped_column(Float, nullable=False, default=2.5)  # mu - lambda*sigma
+    # Elo score (canonical ranking value)
+    elo: Mapped[float] = mapped_column(Float, nullable=False, default=DEFAULT_ELO)
 
-    # Input counts (for debugging/transparency)
-    numeric_count: Mapped[int] = mapped_column(Integer, default=0)
-    pairwise_count: Mapped[int] = mapped_column(Integer, default=0)
-    tier_count: Mapped[int] = mapped_column(Integer, default=0)
+    # Input counts (for transparency)
+    rating_count: Mapped[int] = mapped_column(Integer, default=0)
+    comparison_count: Mapped[int] = mapped_column(Integer, default=0)
 
     # Relationships
-    user: Mapped["User"] = relationship("User", back_populates="preferences")
+    user: Mapped["User"] = relationship("User", back_populates="album_elos")
     album: Mapped["Album"] = relationship("Album")
 
     def __repr__(self) -> str:
-        return f"<UserAlbumPreference user={self.user_id} album={self.album_id} μ={self.mu:.2f} σ={self.sigma:.2f}>"
+        return f"<UserAlbumElo user={self.user_id} album={self.album_id} elo={self.elo:.0f}>"
 
 
 # Import User and Album for relationship resolution

@@ -1,4 +1,4 @@
-"""Pairwise comparison endpoints - compare two albums (A vs B)."""
+"""Pairwise comparison endpoints - compare two albums (A vs B), strong Elo signal."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
@@ -7,13 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.api.deps import get_current_user
 from backend.app.core.database import get_db
 from backend.app.models.album import Album
-from backend.app.models.rating import PairwiseComparison
+from backend.app.models.rating import PairwiseComparison, UserAlbumElo
 from backend.app.models.user import User
 from backend.app.schemas.rating import ComparisonCreate, ComparisonOut, ComparisonListResponse
 
 # Reuse the get_or_create_album helper from ratings
 from backend.app.api.v1.endpoints.ratings import get_or_create_album
-from backend.app.services.cwpr import compute_preference
+from backend.app.services.elo import update_elo_from_comparison
 
 router = APIRouter(prefix="/comparisons", tags=["comparisons"])
 
@@ -45,6 +45,9 @@ async def create_comparison(
     """
     Create a pairwise comparison between two albums.
 
+    This is a strong Elo signal (K=32). Both albums' Elo scores
+    will be updated based on the comparison result.
+
     Requires authentication.
     If albums don't exist in our database, they will be fetched from MusicBrainz.
     """
@@ -67,9 +70,14 @@ async def create_comparison(
     await db.flush()
     await db.refresh(db_comparison)
 
-    # Update CWPR preference scores for both albums
-    await compute_preference(db, current_user.id, album_a.id)
-    await compute_preference(db, current_user.id, album_b.id)
+    # Update Elo scores for both albums (strong signal)
+    await update_elo_from_comparison(
+        db,
+        current_user.id,
+        album_a.id,
+        album_b.id,
+        db_comparison.winner_is_a,
+    )
 
     # Get artist names for response
     artist_a_name = album_a.artists[0].name if album_a.artists else None
@@ -155,6 +163,9 @@ async def delete_comparison(
     """
     Delete a comparison.
 
+    Note: Deleting a comparison does not reverse the Elo changes.
+    The comparison count will be decremented for both albums.
+
     Requires authentication. You can only delete your own comparisons.
     """
     result = await db.execute(
@@ -172,8 +183,17 @@ async def delete_comparison(
     album_b_id = comparison.album_b_id
     await db.delete(comparison)
 
-    # Recompute CWPR preference scores for both albums
-    await compute_preference(db, current_user.id, album_a_id)
-    await compute_preference(db, current_user.id, album_b_id)
+    # Decrement comparison counts (we don't reverse Elo changes)
+    for album_id in [album_a_id, album_b_id]:
+        elo_result = await db.execute(
+            select(UserAlbumElo).where(
+                UserAlbumElo.user_id == current_user.id,
+                UserAlbumElo.album_id == album_id,
+            )
+        )
+        elo_record = elo_result.scalar_one_or_none()
+        if elo_record and elo_record.comparison_count > 0:
+            elo_record.comparison_count -= 1
 
+    await db.flush()
     return {"status": "deleted"}
