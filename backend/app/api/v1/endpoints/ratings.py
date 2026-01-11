@@ -12,6 +12,7 @@ from backend.app.models.user import User
 from backend.app.schemas.rating import RatingCreate, RatingOut, RatingListResponse
 from backend.app.services.musicbrainz import musicbrainz_client
 from backend.app.services.elo import update_elo_from_rating, recalculate_elo_from_rating_change
+from backend.app.services.community import update_album_community_stats
 
 router = APIRouter(prefix="/ratings", tags=["ratings"])
 
@@ -100,8 +101,11 @@ async def rate_album(
     await db.flush()
     await db.refresh(db_rating)
 
-    # Update Elo score (weak signal)
+    # Update Elo score (weak signal for personal ranking)
     await update_elo_from_rating(db, current_user.id, album.id, rating.value)
+
+    # Update community stats (Bayesian score)
+    await update_album_community_stats(db, album.id)
 
     # Get artist name for response
     artist_name = None
@@ -198,5 +202,8 @@ async def delete_rating(
 
     # Update Elo record (decrement rating count)
     await recalculate_elo_from_rating_change(db, current_user.id, album_id, None, None)
+
+    # Update community stats (Bayesian score)
+    await update_album_community_stats(db, album_id)
 
     return {"status": "deleted"}

@@ -44,10 +44,11 @@ class Album(Base, UUIDMixin, TimestampMixin):
     genres: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     # Community stats (denormalized for performance)
-    community_mean: Mapped[float | None] = mapped_column(Float, nullable=True)
-    community_sigma: Mapped[float | None] = mapped_column(Float, nullable=True)
-    community_score: Mapped[float | None] = mapped_column(Float, nullable=True)  # mean - lambda*sigma
+    # Bayesian weighted score: (v/(v+m))*R + (m/(v+m))*C
+    # where R=album avg, v=vote count, m=min votes, C=global avg
     rating_count: Mapped[int] = mapped_column(Integer, default=0)
+    rating_sum: Mapped[float] = mapped_column(Float, default=0.0)  # Sum of all ratings
+    bayesian_score: Mapped[float | None] = mapped_column(Float, nullable=True, index=True)
 
     # Relationships
     artists: Mapped[list["Artist"]] = relationship(
