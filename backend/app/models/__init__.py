@@ -4,8 +4,7 @@ from backend.app.models.album import Album, Artist
 from backend.app.models.rating import (
     NumericRating,
     PairwiseComparison,
-    TierPlacement,
-    UserAlbumPreference,
+    UserAlbumElo,
 )
 
 __all__ = [
@@ -15,6 +14,5 @@ __all__ = [
     "Artist",
     "NumericRating",
     "PairwiseComparison",
-    "TierPlacement",
-    "UserAlbumPreference",
+    "UserAlbumElo",
 ]

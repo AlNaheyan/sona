@@ -15,8 +15,7 @@ from backend.app.models import (
     Artist,
     NumericRating,
     PairwiseComparison,
-    TierPlacement,
-    UserAlbumPreference,
+    UserAlbumElo,
 )
 
 config = context.config
