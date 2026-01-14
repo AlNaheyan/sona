@@ -1,6 +1,6 @@
 # RateMyAlbum
 
-Album rating and recommendation API with confidence-weighted preference ranking.
+Album rating and recommendation engine with confidence-weighted preference ranking.
 
 ## Tech Stack
 
