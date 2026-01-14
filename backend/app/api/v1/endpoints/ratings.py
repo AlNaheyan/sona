@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from backend.app.api.deps import get_current_user
 from backend.app.core.database import get_db
@@ -19,8 +20,12 @@ router = APIRouter(prefix="/ratings", tags=["ratings"])
 
 async def get_or_create_album(db: AsyncSession, mbid: str) -> Album:
     """Get album from DB or create it from MusicBrainz data."""
-    # Check if album exists
-    result = await db.execute(select(Album).where(Album.mbid == mbid))
+    # Check if album exists (eagerly load artists)
+    result = await db.execute(
+        select(Album)
+        .where(Album.mbid == mbid)
+        .options(selectinload(Album.artists))
+    )
     album = result.scalar_one_or_none()
 
     if album:
@@ -148,8 +153,12 @@ async def get_my_ratings(
 
     rating_list = []
     for r in ratings:
-        # Fetch album details
-        album_result = await db.execute(select(Album).where(Album.id == r.album_id))
+        # Fetch album details (eagerly load artists)
+        album_result = await db.execute(
+            select(Album)
+            .where(Album.id == r.album_id)
+            .options(selectinload(Album.artists))
+        )
         album = album_result.scalar_one_or_none()
         if not album:
             continue

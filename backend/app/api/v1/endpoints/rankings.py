@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from backend.app.api.deps import get_current_user
 from backend.app.core.database import get_db
@@ -41,8 +42,12 @@ async def get_my_rankings(
 
     rankings = []
     for i, elo in enumerate(elo_records, start=offset + 1):
-        # Fetch album details
-        album_result = await db.execute(select(Album).where(Album.id == elo.album_id))
+        # Fetch album details (eagerly load artists)
+        album_result = await db.execute(
+            select(Album)
+            .where(Album.id == elo.album_id)
+            .options(selectinload(Album.artists))
+        )
         album = album_result.scalar_one_or_none()
         if not album:
             continue

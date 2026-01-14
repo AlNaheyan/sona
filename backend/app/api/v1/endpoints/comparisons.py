@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from backend.app.api.deps import get_current_user
 from backend.app.core.database import get_db
@@ -122,10 +123,18 @@ async def get_my_comparisons(
 
     comparison_list = []
     for c in comparisons:
-        # Fetch album details
-        album_a_result = await db.execute(select(Album).where(Album.id == c.album_a_id))
+        # Fetch album details (eagerly load artists)
+        album_a_result = await db.execute(
+            select(Album)
+            .where(Album.id == c.album_a_id)
+            .options(selectinload(Album.artists))
+        )
         album_a = album_a_result.scalar_one_or_none()
-        album_b_result = await db.execute(select(Album).where(Album.id == c.album_b_id))
+        album_b_result = await db.execute(
+            select(Album)
+            .where(Album.id == c.album_b_id)
+            .options(selectinload(Album.artists))
+        )
         album_b = album_b_result.scalar_one_or_none()
 
         if not album_a or not album_b:

@@ -18,6 +18,7 @@ This prevents albums with few ratings from dominating rankings.
 
 from sqlalchemy import select, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from backend.app.models.album import Album
 from backend.app.models.rating import NumericRating
@@ -135,7 +136,7 @@ async def get_community_rankings(
     )
     total_count = count_result.scalar() or 0
 
-    # Get ranked albums
+    # Get ranked albums (eagerly load artists)
     result = await db.execute(
         select(Album)
         .where(
@@ -145,6 +146,7 @@ async def get_community_rankings(
         .order_by(Album.bayesian_score.desc())
         .limit(limit)
         .offset(offset)
+        .options(selectinload(Album.artists))
     )
     albums = result.scalars().all()
 
@@ -166,6 +168,7 @@ async def get_trending_albums(
         .where(Album.rating_count > 0)
         .order_by(Album.rating_count.desc())
         .limit(limit)
+        .options(selectinload(Album.artists))
     )
     return result.scalars().all()
 

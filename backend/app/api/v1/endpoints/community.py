@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from backend.app.core.database import get_db
 from backend.app.schemas.album import CommunityRankedAlbum, CommunityRankingsResponse
@@ -123,12 +124,13 @@ async def get_community_stats(
     # Global mean
     global_mean = await get_global_mean_rating(db)
 
-    # Top rated album
+    # Top rated album (eagerly load artists)
     top_result = await db.execute(
         select(Album)
         .where(Album.bayesian_score.isnot(None))
         .order_by(Album.bayesian_score.desc())
         .limit(1)
+        .options(selectinload(Album.artists))
     )
     top_album = top_result.scalar_one_or_none()
 
