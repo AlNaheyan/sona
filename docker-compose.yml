@@ -47,6 +47,44 @@ services:
       - redis_data:/data
     restart: unless-stopped
 
+  celery-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    command: celery -A backend.app.worker.celery_app worker --loglevel=info
+    volumes:
+      - ./backend:/app/backend
+      - ./ml:/app/ml
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://ratemyalbum:ratemyalbum_secret@db:5432/ratemyalbum
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=dev-secret-key-change-in-production
+      - ENVIRONMENT=development
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  celery-beat:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    command: celery -A backend.app.worker.celery_app beat --loglevel=info
+    volumes:
+      - ./backend:/app/backend
+      - ./ml:/app/ml
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://ratemyalbum:ratemyalbum_secret@db:5432/ratemyalbum
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=dev-secret-key-change-in-production
+      - ENVIRONMENT=development
+    depends_on:
+      - redis
+      - celery-worker
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   redis_data:
