@@ -108,7 +108,7 @@ class TestLoginEndpoint:
 
     @pytest.mark.asyncio
     async def test_login_success(self, client: AsyncClient, test_user: User):
-        """Should return access token for valid credentials."""
+        """Should return access and refresh tokens for valid credentials."""
         response = await client.post(
             "/api/v1/auth/login",
             json={
@@ -120,7 +120,10 @@ class TestLoginEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert "access_token" in data
+        assert "refresh_token" in data
         assert len(data["access_token"]) > 0
+        assert len(data["refresh_token"]) > 0
+        assert data["token_type"] == "bearer"
 
     @pytest.mark.asyncio
     async def test_login_wrong_password(self, client: AsyncClient, test_user: User):
@@ -213,6 +216,97 @@ class TestMeEndpoint:
         assert response.status_code in (401, 403)
 
 
+class TestRefreshEndpoint:
+    """Tests for POST /api/v1/auth/refresh."""
+
+    @pytest.mark.asyncio
+    async def test_refresh_success(self, client: AsyncClient, test_user: User):
+        """Should return new tokens for valid refresh token."""
+        # First login to get tokens
+        login_response = await client.post(
+            "/api/v1/auth/login",
+            json={
+                "email": test_user.email,
+                "password": "testpassword123",
+            },
+        )
+        refresh_token = login_response.json()["refresh_token"]
+
+        # Use refresh token to get new tokens
+        response = await client.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": refresh_token},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "access_token" in data
+        assert "refresh_token" in data
+        assert len(data["access_token"]) > 0
+        assert len(data["refresh_token"]) > 0
+
+    @pytest.mark.asyncio
+    async def test_refresh_invalid_token(self, client: AsyncClient):
+        """Should reject invalid refresh token."""
+        response = await client.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": "invalid.refresh.token"},
+        )
+
+        assert response.status_code == 401
+        assert "Invalid or expired refresh token" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_refresh_with_access_token(self, client: AsyncClient, test_user: User):
+        """Should reject access token used as refresh token."""
+        # Login to get tokens
+        login_response = await client.post(
+            "/api/v1/auth/login",
+            json={
+                "email": test_user.email,
+                "password": "testpassword123",
+            },
+        )
+        access_token = login_response.json()["access_token"]
+
+        # Try to use access token as refresh token
+        response = await client.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": access_token},
+        )
+
+        assert response.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_refresh_returns_new_tokens(self, client: AsyncClient, test_user: User):
+        """New access token should work for protected endpoints."""
+        # Login
+        login_response = await client.post(
+            "/api/v1/auth/login",
+            json={
+                "email": test_user.email,
+                "password": "testpassword123",
+            },
+        )
+        refresh_token = login_response.json()["refresh_token"]
+
+        # Refresh
+        refresh_response = await client.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": refresh_token},
+        )
+        new_access_token = refresh_response.json()["access_token"]
+
+        # Use new token
+        me_response = await client.get(
+            "/api/v1/auth/me",
+            headers={"Authorization": f"Bearer {new_access_token}"},
+        )
+
+        assert me_response.status_code == 200
+        assert me_response.json()["id"] == test_user.id
+
+
 class TestFullAuthFlow:
     """End-to-end auth flow tests."""
 
@@ -250,3 +344,44 @@ class TestFullAuthFlow:
         assert me_response.status_code == 200
         assert me_response.json()["id"] == user_id
         assert me_response.json()["email"] == "flowtest@example.com"
+
+    @pytest.mark.asyncio
+    async def test_full_refresh_flow(self, client: AsyncClient):
+        """Should be able to register, login, refresh, and access protected endpoint."""
+        # Register
+        register_response = await client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "refreshflow@example.com",
+                "username": "refreshflow",
+                "password": "refreshpassword123",
+            },
+        )
+        assert register_response.status_code == 201
+
+        # Login
+        login_response = await client.post(
+            "/api/v1/auth/login",
+            json={
+                "email": "refreshflow@example.com",
+                "password": "refreshpassword123",
+            },
+        )
+        assert login_response.status_code == 200
+        refresh_token = login_response.json()["refresh_token"]
+
+        # Refresh tokens
+        refresh_response = await client.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": refresh_token},
+        )
+        assert refresh_response.status_code == 200
+        new_access_token = refresh_response.json()["access_token"]
+
+        # Access protected endpoint with new token
+        me_response = await client.get(
+            "/api/v1/auth/me",
+            headers={"Authorization": f"Bearer {new_access_token}"},
+        )
+        assert me_response.status_code == 200
+        assert me_response.json()["email"] == "refreshflow@example.com"

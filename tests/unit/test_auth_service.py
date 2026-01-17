@@ -8,7 +8,9 @@ from backend.app.services.auth import (
     hash_password,
     verify_password,
     create_access_token,
+    create_refresh_token,
     decode_access_token,
+    decode_refresh_token,
 )
 
 
@@ -131,3 +133,70 @@ class TestJWTTokens:
         result = decode_access_token(tampered_token)
 
         assert result is None
+
+
+class TestRefreshTokens:
+    """Tests for JWT refresh token creation and decoding."""
+
+    def test_create_refresh_token_returns_string(self):
+        """create_refresh_token should return a JWT string."""
+        user_id = "test-user-id-123"
+        token = create_refresh_token(user_id)
+
+        assert isinstance(token, str)
+        assert len(token) > 0
+        assert token.count(".") == 2
+
+    def test_decode_refresh_token_valid(self):
+        """decode_refresh_token should return user_id for valid token."""
+        user_id = "test-user-id-123"
+        token = create_refresh_token(user_id)
+
+        decoded_id = decode_refresh_token(token)
+
+        assert decoded_id == user_id
+
+    def test_decode_refresh_token_invalid_token(self):
+        """decode_refresh_token should return None for invalid token."""
+        invalid_token = "invalid.token.here"
+
+        result = decode_refresh_token(invalid_token)
+
+        assert result is None
+
+    def test_access_token_cannot_be_used_as_refresh(self):
+        """Access token should not work with decode_refresh_token."""
+        user_id = "test-user-id-123"
+        access_token = create_access_token(user_id)
+
+        result = decode_refresh_token(access_token)
+
+        assert result is None
+
+    def test_refresh_token_cannot_be_used_as_access(self):
+        """Refresh token should not work with decode_access_token."""
+        user_id = "test-user-id-123"
+        refresh_token = create_refresh_token(user_id)
+
+        result = decode_access_token(refresh_token)
+
+        assert result is None
+
+    def test_create_refresh_token_custom_expiry(self):
+        """create_refresh_token should accept custom expiry."""
+        user_id = "test-user-id-123"
+        custom_expiry = timedelta(days=30)
+
+        token = create_refresh_token(user_id, expires_delta=custom_expiry)
+        decoded_id = decode_refresh_token(token)
+
+        assert decoded_id == user_id
+
+    def test_access_and_refresh_tokens_are_different(self):
+        """Same user should get different access and refresh tokens."""
+        user_id = "test-user-id-123"
+
+        access_token = create_access_token(user_id)
+        refresh_token = create_refresh_token(user_id)
+
+        assert access_token != refresh_token

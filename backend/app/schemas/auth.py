@@ -17,15 +17,22 @@ class UserLogin(BaseModel):
 
 
 class Token(BaseModel):
-    """JWT token response."""
+    """JWT token response with access and refresh tokens."""
     access_token: str
+    refresh_token: str
     token_type: str = "bearer"
+
+
+class RefreshTokenRequest(BaseModel):
+    """Refresh token request."""
+    refresh_token: str
 
 
 class TokenPayload(BaseModel):
     """JWT token payload."""
     sub: str  # user id
     exp: int
+    type: str = "access"  # "access" or "refresh"
 
 
 class UserOut(BaseModel):
