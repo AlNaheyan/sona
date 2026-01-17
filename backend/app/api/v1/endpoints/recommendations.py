@@ -1,10 +1,11 @@
 """Personalized recommendation endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api.deps import get_current_user
 from backend.app.core.database import get_db
+from backend.app.core.rate_limit import limiter, RateLimits
 from backend.app.models.user import User
 from backend.app.schemas.recommendations import (
     RecommendationsResponse,
@@ -22,7 +23,9 @@ router = APIRouter(prefix="/recommendations", tags=["recommendations"])
 
 
 @router.get("", response_model=RecommendationsResponse)
+@limiter.limit(RateLimits.RECOMMENDATIONS)
 async def get_recommendations(
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     limit: int = Query(20, ge=1, le=50, description="Number of recommendations"),

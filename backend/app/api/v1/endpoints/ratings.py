@@ -1,12 +1,13 @@
 """Rating endpoints - numeric album rating (1-10), weak Elo signal."""
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from backend.app.api.deps import get_current_user
 from backend.app.core.database import get_db
+from backend.app.core.rate_limit import limiter, RateLimits
 from backend.app.models.album import Album, Artist
 from backend.app.models.rating import NumericRating
 from backend.app.models.user import User
@@ -61,7 +62,9 @@ async def get_or_create_album(db: AsyncSession, mbid: str) -> Album:
 
 
 @router.post("", response_model=RatingOut)
+@limiter.limit(RateLimits.RATING)
 async def rate_album(
+    request: Request,
     rating: RatingCreate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),

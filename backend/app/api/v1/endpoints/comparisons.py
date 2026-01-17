@@ -1,12 +1,13 @@
 """Pairwise comparison endpoints - compare two albums (A vs B), strong Elo signal."""
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from backend.app.api.deps import get_current_user
 from backend.app.core.database import get_db
+from backend.app.core.rate_limit import limiter, RateLimits
 from backend.app.models.album import Album
 from backend.app.models.rating import PairwiseComparison, UserAlbumElo
 from backend.app.models.user import User
@@ -38,7 +39,9 @@ def _db_to_winner(winner_is_a: bool | None) -> str:
 
 
 @router.post("", response_model=ComparisonOut)
+@limiter.limit(RateLimits.COMPARISON)
 async def create_comparison(
+    request: Request,
     comparison: ComparisonCreate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),

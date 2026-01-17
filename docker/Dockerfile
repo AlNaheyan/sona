@@ -13,8 +13,8 @@ COPY pyproject.toml .
 COPY backend/ ./backend/
 COPY ml/ ./ml/
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -e .
+# Install Python dependencies (including dev for testing)
+RUN pip install --no-cache-dir -e ".[dev]"
 
 # Set Python path
 ENV PYTHONPATH=/app

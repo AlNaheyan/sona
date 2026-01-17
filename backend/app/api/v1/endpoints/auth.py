@@ -1,11 +1,12 @@
 """Authentication endpoints - register, login, me."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api.deps import get_current_user
 from backend.app.core.database import get_db
+from backend.app.core.rate_limit import limiter, RateLimits
 from backend.app.models.user import User
 from backend.app.schemas.auth import Token, UserLogin, UserOut, UserRegister
 from backend.app.services.auth import create_access_token, hash_password, verify_password
@@ -14,7 +15,9 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+@limiter.limit(RateLimits.REGISTER)
 async def register(
+    request: Request,
     user_in: UserRegister,
     db: AsyncSession = Depends(get_db),
 ) -> UserOut:
@@ -61,7 +64,9 @@ async def register(
 
 
 @router.post("/login", response_model=Token)
+@limiter.limit(RateLimits.LOGIN)
 async def login(
+    request: Request,
     user_in: UserLogin,
     db: AsyncSession = Depends(get_db),
 ) -> Token:

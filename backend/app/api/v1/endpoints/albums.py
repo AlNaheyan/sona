@@ -1,11 +1,12 @@
 """Album search and retrieval endpoints."""
 
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, Query, HTTPException, Request
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from backend.app.core.database import get_db
+from backend.app.core.rate_limit import limiter, RateLimits
 from backend.app.models.album import Album
 from backend.app.schemas.album import AlbumSearchResult, AlbumSearchResponse, AlbumOut, AlbumListResponse
 from backend.app.services.musicbrainz import musicbrainz_client
@@ -14,7 +15,9 @@ router = APIRouter(prefix="/albums", tags=["albums"])
 
 
 @router.get("/search", response_model=AlbumSearchResponse)
+@limiter.limit(RateLimits.SEARCH)
 async def search_albums(
+    request: Request,
     q: str = Query(..., min_length=1, description="Search query (album name)"),
     limit: int = Query(10, ge=1, le=25, description="Maximum number of results"),
     include_covers: bool = Query(False, description="Fetch cover art (slower)"),

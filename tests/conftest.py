@@ -1,5 +1,10 @@
 """Pytest fixtures for RateMyAlbum tests."""
 
+import os
+
+# Set testing mode to disable rate limiting before importing app
+os.environ["TESTING"] = "true"
+
 import asyncio
 from collections.abc import AsyncGenerator
 from uuid import uuid4
