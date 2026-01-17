@@ -13,10 +13,10 @@ from backend.app.api.v1 import api_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    # Startup: create tables (in dev only; use migrations in prod)
-    if settings.debug:
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+    # Startup
+    # NOTE: Use Alembic migrations for schema changes:
+    #   cd backend && alembic upgrade head
+    # Auto-create is disabled - all schema changes go through migrations
     yield
     # Shutdown: dispose engine
     await engine.dispose()
