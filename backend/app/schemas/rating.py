@@ -93,3 +93,40 @@ class PersonalRankingsResponse(BaseModel):
     """User's personal album rankings sorted by Elo score."""
     rankings: list[RankedAlbumOut]
     count: int
+
+
+# ============================================================================
+# Comparison Suggestion Schemas
+# ============================================================================
+
+class SuggestedAlbum(BaseModel):
+    """Album info for comparison suggestion."""
+    id: str
+    title: str
+    artist_name: str | None
+    cover_url: str | None
+    elo: float
+    comparison_count: int
+
+
+class ComparisonSuggestionOut(BaseModel):
+    """A suggested pair of albums to compare."""
+    album_a: SuggestedAlbum
+    album_b: SuggestedAlbum
+    reason: str
+    priority_score: float
+
+
+class ComparisonSuggestionsResponse(BaseModel):
+    """Response for comparison suggestions."""
+    suggestions: list[ComparisonSuggestionOut]
+    count: int
+
+
+class ComparisonStatsResponse(BaseModel):
+    """Statistics about user's comparison coverage."""
+    ranked_albums: int
+    total_comparisons: int
+    unique_pairs_compared: int
+    possible_pairs: int
+    coverage_percentage: float

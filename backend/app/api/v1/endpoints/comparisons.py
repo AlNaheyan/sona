@@ -11,11 +11,23 @@ from backend.app.core.rate_limit import limiter, RateLimits
 from backend.app.models.album import Album
 from backend.app.models.rating import PairwiseComparison, UserAlbumElo
 from backend.app.models.user import User
-from backend.app.schemas.rating import ComparisonCreate, ComparisonOut, ComparisonListResponse
+from backend.app.schemas.rating import (
+    ComparisonCreate,
+    ComparisonOut,
+    ComparisonListResponse,
+    ComparisonSuggestionOut,
+    ComparisonSuggestionsResponse,
+    ComparisonStatsResponse,
+    SuggestedAlbum,
+)
 
 # Reuse the get_or_create_album helper from ratings
 from backend.app.api.v1.endpoints.ratings import get_or_create_album
 from backend.app.services.elo import update_elo_from_comparison
+from backend.app.services.comparison_suggestions import (
+    get_comparison_suggestions,
+    get_comparison_stats,
+)
 
 router = APIRouter(prefix="/comparisons", tags=["comparisons"])
 
@@ -209,3 +221,85 @@ async def delete_comparison(
 
     await db.flush()
     return {"status": "deleted"}
+
+
+@router.get("/suggestions", response_model=ComparisonSuggestionsResponse)
+async def get_suggestions(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    limit: int = Query(5, ge=1, le=10, description="Number of suggestions"),
+) -> ComparisonSuggestionsResponse:
+    """
+    Get smart suggestions for which albums to compare next.
+
+    The algorithm prioritizes:
+    - Albums with close Elo scores (need ranking refinement)
+    - Pairs that haven't been compared yet
+    - Newly added albums with few comparisons
+    - Occasional exploration (different genres)
+
+    Requires authentication. You need at least 3 ranked albums.
+    """
+    from backend.app.services.comparison_suggestions import SuggestionConfig
+
+    config = SuggestionConfig(max_suggestions=limit)
+    suggestions = await get_comparison_suggestions(db, current_user.id, config)
+
+    # Get Elo data for response
+    elo_result = await db.execute(
+        select(UserAlbumElo).where(UserAlbumElo.user_id == current_user.id)
+    )
+    elo_by_album = {e.album_id: e for e in elo_result.scalars().all()}
+
+    suggestion_list = []
+    for s in suggestions:
+        elo_a = elo_by_album.get(s.album_a.id)
+        elo_b = elo_by_album.get(s.album_b.id)
+
+        artist_a = s.album_a.artists[0].name if s.album_a.artists else None
+        artist_b = s.album_b.artists[0].name if s.album_b.artists else None
+
+        suggestion_list.append(
+            ComparisonSuggestionOut(
+                album_a=SuggestedAlbum(
+                    id=s.album_a.id,
+                    title=s.album_a.title,
+                    artist_name=artist_a,
+                    cover_url=s.album_a.cover_url,
+                    elo=round(elo_a.elo, 1) if elo_a else 1500.0,
+                    comparison_count=elo_a.comparison_count if elo_a else 0,
+                ),
+                album_b=SuggestedAlbum(
+                    id=s.album_b.id,
+                    title=s.album_b.title,
+                    artist_name=artist_b,
+                    cover_url=s.album_b.cover_url,
+                    elo=round(elo_b.elo, 1) if elo_b else 1500.0,
+                    comparison_count=elo_b.comparison_count if elo_b else 0,
+                ),
+                reason=s.reason,
+                priority_score=round(s.priority_score, 2),
+            )
+        )
+
+    return ComparisonSuggestionsResponse(
+        suggestions=suggestion_list,
+        count=len(suggestion_list),
+    )
+
+
+@router.get("/stats", response_model=ComparisonStatsResponse)
+async def get_my_comparison_stats(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ComparisonStatsResponse:
+    """
+    Get statistics about your comparison coverage.
+
+    Shows how many album pairs you've compared out of all possible pairs.
+    This helps track progress toward complete ranking refinement.
+
+    Requires authentication.
+    """
+    stats = await get_comparison_stats(db, current_user.id)
+    return ComparisonStatsResponse(**stats)
