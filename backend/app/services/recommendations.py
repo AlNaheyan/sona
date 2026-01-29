@@ -634,7 +634,7 @@ def generate_reasons(
 async def get_hybrid_recommendations(
     db: AsyncSession,
     user_id: str,
-    limit: int = 20,
+    limit: int = 20, #set to 20 later
     include_reasons: bool = False,
     config: RecommendationConfig | None = None,
 ) -> RecommendationsOutput:

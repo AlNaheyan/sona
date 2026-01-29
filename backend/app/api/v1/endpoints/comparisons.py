@@ -50,7 +50,23 @@ def _db_to_winner(winner_is_a: bool | None) -> str:
     return "tie"
 
 
-@router.post("", response_model=ComparisonOut)
+@router.post(
+    "",
+    response_model=ComparisonOut,
+    responses={
+        400: {
+            "description": "Invalid comparison",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Cannot compare an album to itself"}
+                }
+            },
+        },
+        401: {"description": "Not authenticated"},
+        404: {"description": "One or both albums not found in MusicBrainz"},
+        429: {"description": "Rate limit exceeded (60/minute)"},
+    },
+)
 @limiter.limit(RateLimits.COMPARISON)
 async def create_comparison(
     request: Request,
@@ -61,11 +77,19 @@ async def create_comparison(
     """
     Create a pairwise comparison between two albums.
 
-    This is a strong Elo signal (K=32). Both albums' Elo scores
-    will be updated based on the comparison result.
+    This is a **strong Elo signal (K=32)** - the most impactful way to
+    refine your rankings. Declare which album you prefer (or a tie).
 
-    Requires authentication.
-    If albums don't exist in our database, they will be fetched from MusicBrainz.
+    **Elo updates**:
+    - Winner gains points, loser loses points
+    - Point exchange depends on expected outcome (upset = bigger swing)
+    - Ties result in small adjustments toward each other
+
+    **Behavior**:
+    - Albums are fetched from MusicBrainz if not in local database
+    - You can compare the same pair multiple times (each affects Elo)
+
+    **Rate limit**: 60 requests per minute
     """
     # Validate that albums are different
     if comparison.mbid_a == comparison.mbid_b:
@@ -223,7 +247,13 @@ async def delete_comparison(
     return {"status": "deleted"}
 
 
-@router.get("/suggestions", response_model=ComparisonSuggestionsResponse)
+@router.get(
+    "/suggestions",
+    response_model=ComparisonSuggestionsResponse,
+    responses={
+        401: {"description": "Not authenticated"},
+    },
+)
 async def get_suggestions(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -232,13 +262,16 @@ async def get_suggestions(
     """
     Get smart suggestions for which albums to compare next.
 
-    The algorithm prioritizes:
-    - Albums with close Elo scores (need ranking refinement)
-    - Pairs that haven't been compared yet
-    - Newly added albums with few comparisons
-    - Occasional exploration (different genres)
+    The algorithm prioritizes pairs that will most improve your ranking accuracy:
 
-    Requires authentication. You need at least 3 ranked albums.
+    | Priority | Reason | Weight |
+    |----------|--------|--------|
+    | 1 | Close Elo scores (need refinement) | 3.0x |
+    | 2 | Low comparison counts (uncertain) | 2.0x |
+    | 3 | Never compared before | 1.5x |
+    | 4 | Exploration (different genres) | 0.5x |
+
+    Returns empty list if you have fewer than 3 ranked albums.
     """
     from backend.app.services.comparison_suggestions import SuggestionConfig
 
@@ -288,7 +321,13 @@ async def get_suggestions(
     )
 
 
-@router.get("/stats", response_model=ComparisonStatsResponse)
+@router.get(
+    "/stats",
+    response_model=ComparisonStatsResponse,
+    responses={
+        401: {"description": "Not authenticated"},
+    },
+)
 async def get_my_comparison_stats(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -296,10 +335,13 @@ async def get_my_comparison_stats(
     """
     Get statistics about your comparison coverage.
 
-    Shows how many album pairs you've compared out of all possible pairs.
-    This helps track progress toward complete ranking refinement.
+    Shows progress toward complete ranking refinement:
+    - **ranked_albums**: Total albums in your rankings
+    - **possible_pairs**: n*(n-1)/2 possible comparisons
+    - **unique_pairs_compared**: How many pairs you've actually compared
+    - **coverage_percentage**: Your comparison completeness
 
-    Requires authentication.
+    Higher coverage = more accurate rankings, but diminishing returns after ~30%.
     """
     stats = await get_comparison_stats(db, current_user.id)
     return ComparisonStatsResponse(**stats)

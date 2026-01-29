@@ -26,5 +26,10 @@ class Settings(BaseSettings):
     # CWPR algorithm
     cwpr_lambda: float = 1.0  # Confidence penalty factor
 
+    # Sentry (error tracking)
+    sentry_dsn: str = ""  # Leave empty to disable Sentry
+    sentry_traces_sample_rate: float = 0.1  # 10% of transactions for performance monitoring
+    sentry_profiles_sample_rate: float = 0.1  # 10% of profiled transactions
+
 
 settings = Settings()

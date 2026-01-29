@@ -20,7 +20,26 @@ from backend.app.services.auth import (
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/register",
+    response_model=UserOut,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        400: {
+            "description": "Validation error or duplicate email/username",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "email_taken": {"value": {"detail": "Email already registered"}},
+                        "username_taken": {"value": {"detail": "Username already taken"}},
+                    }
+                }
+            },
+        },
+        422: {"description": "Invalid input (validation failed)"},
+        429: {"description": "Rate limit exceeded (3/minute)"},
+    },
+)
 @limiter.limit(RateLimits.REGISTER)
 async def register(
     request: Request,
@@ -28,11 +47,12 @@ async def register(
     db: AsyncSession = Depends(get_db),
 ) -> UserOut:
     """
-    Register a new user.
+    Register a new user account.
 
-    - **email**: Valid email address (must be unique)
-    - **username**: 3-50 characters, alphanumeric and underscores only (must be unique)
-    - **password**: Minimum 8 characters
+    Creates a new user with the provided credentials. After registration,
+    use `/auth/login` to obtain access tokens.
+
+    **Rate limit**: 3 requests per minute
     """
     # Check if email already exists
     result = await db.execute(select(User).where(User.email == user_in.email))
@@ -69,7 +89,29 @@ async def register(
     )
 
 
-@router.post("/login", response_model=Token)
+@router.post(
+    "/login",
+    response_model=Token,
+    responses={
+        401: {
+            "description": "Invalid credentials",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Incorrect email or password"}
+                }
+            },
+        },
+        403: {
+            "description": "Account disabled",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "User account is disabled"}
+                }
+            },
+        },
+        429: {"description": "Rate limit exceeded (5/minute)"},
+    },
+)
 @limiter.limit(RateLimits.LOGIN)
 async def login(
     request: Request,
@@ -77,14 +119,18 @@ async def login(
     db: AsyncSession = Depends(get_db),
 ) -> Token:
     """
-    Login and get access and refresh tokens.
+    Authenticate and receive JWT tokens.
 
-    - **email**: Your registered email
-    - **password**: Your password
+    Returns both access and refresh tokens:
+    - **access_token**: Use for API requests (expires in 30 minutes)
+    - **refresh_token**: Use to get new tokens (expires in 7 days)
 
-    Returns:
-    - **access_token**: Short-lived JWT (30 min) for API access
-    - **refresh_token**: Long-lived JWT (7 days) for getting new access tokens
+    Include the access token in the `Authorization` header:
+    ```
+    Authorization: Bearer <access_token>
+    ```
+
+    **Rate limit**: 5 requests per minute
     """
     # Find user by email
     result = await db.execute(select(User).where(User.email == user_in.email))
@@ -110,14 +156,27 @@ async def login(
     return Token(access_token=access_token, refresh_token=refresh_token)
 
 
-@router.get("/me", response_model=UserOut)
+@router.get(
+    "/me",
+    response_model=UserOut,
+    responses={
+        401: {
+            "description": "Not authenticated or invalid token",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Could not validate credentials"}
+                }
+            },
+        },
+    },
+)
 async def get_me(
     current_user: User = Depends(get_current_user),
 ) -> UserOut:
     """
-    Get current user profile.
+    Get the current authenticated user's profile.
 
-    Requires authentication.
+    Requires a valid access token in the Authorization header.
     """
     return UserOut(
         id=current_user.id,
@@ -128,7 +187,32 @@ async def get_me(
     )
 
 
-@router.post("/refresh", response_model=Token)
+@router.post(
+    "/refresh",
+    response_model=Token,
+    responses={
+        401: {
+            "description": "Invalid or expired refresh token",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "invalid_token": {"value": {"detail": "Invalid or expired refresh token"}},
+                        "user_not_found": {"value": {"detail": "User not found"}},
+                    }
+                }
+            },
+        },
+        403: {
+            "description": "Account disabled",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "User account is disabled"}
+                }
+            },
+        },
+        429: {"description": "Rate limit exceeded (5/minute)"},
+    },
+)
 @limiter.limit(RateLimits.LOGIN)
 async def refresh_tokens(
     request: Request,
@@ -136,13 +220,19 @@ async def refresh_tokens(
     db: AsyncSession = Depends(get_db),
 ) -> Token:
     """
-    Get new access and refresh tokens using a refresh token.
+    Exchange a refresh token for new access and refresh tokens.
 
-    Use this endpoint when your access token expires. The refresh token
-    is valid for 7 days. After using it, you'll get new tokens (both
-    access and refresh are rotated for security).
+    Use this when your access token expires. Both tokens are rotated
+    for security (the old refresh token becomes invalid).
 
-    - **refresh_token**: Your valid refresh token from login
+    **Token lifecycle**:
+    1. Login → receive access + refresh tokens
+    2. Use access token for API calls (30 min validity)
+    3. When access token expires, call this endpoint with refresh token
+    4. Receive new access + refresh tokens
+    5. Repeat from step 2
+
+    **Rate limit**: 5 requests per minute
     """
     # Decode and validate refresh token
     user_id = decode_refresh_token(token_request.refresh_token)

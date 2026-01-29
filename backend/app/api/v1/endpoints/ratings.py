@@ -61,7 +61,23 @@ async def get_or_create_album(db: AsyncSession, mbid: str) -> Album:
     return album
 
 
-@router.post("", response_model=RatingOut)
+@router.post(
+    "",
+    response_model=RatingOut,
+    responses={
+        401: {"description": "Not authenticated"},
+        404: {
+            "description": "Album not found in MusicBrainz",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Album not found in MusicBrainz"}
+                }
+            },
+        },
+        422: {"description": "Invalid rating value (must be 1-10)"},
+        429: {"description": "Rate limit exceeded (60/minute)"},
+    },
+)
 @limiter.limit(RateLimits.RATING)
 async def rate_album(
     request: Request,
@@ -70,14 +86,19 @@ async def rate_album(
     db: AsyncSession = Depends(get_db),
 ) -> RatingOut:
     """
-    Rate an album (1-10).
+    Rate an album on a 1-10 scale.
 
-    This is a weak Elo signal (K=16). The rating is interpreted relative
-    to your average rating to update the album's Elo score.
+    This creates a **weak Elo signal (K=16)** for your personal rankings.
+    The rating is interpreted relative to your average rating:
+    - Rating above your average → album's Elo increases
+    - Rating below your average → album's Elo decreases
 
-    Requires authentication.
-    If the album doesn't exist in our database, it will be fetched from MusicBrainz.
-    If you've already rated this album, your rating will be updated.
+    **Behavior**:
+    - If the album doesn't exist locally, it's fetched from MusicBrainz
+    - If you've already rated this album, your rating is updated
+    - Both personal Elo and community Bayesian scores are recalculated
+
+    **Rate limit**: 60 requests per minute
     """
     # Get or create album
     album = await get_or_create_album(db, rating.mbid)

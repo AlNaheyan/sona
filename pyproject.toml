@@ -37,6 +37,9 @@ dependencies = [
 
     # Background tasks
     "celery[redis]>=5.3.0",
+
+    # Error tracking
+    "sentry-sdk[fastapi]>=1.40.0",
 ]
 
 [project.optional-dependencies]
