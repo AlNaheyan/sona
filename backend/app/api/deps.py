@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.core.database import get_db
-from backend.app.core.sentry import set_user_context
+from backend.app.core.logging import set_request_context
 from backend.app.models.user import User
 from backend.app.services.auth import decode_access_token
 
@@ -21,7 +21,7 @@ async def get_current_user(
     Dependency to get the current authenticated user.
 
     Raises HTTPException 401 if token is invalid or user not found.
-    Also sets Sentry user context for error tracking.
+    Also sets user context for structured logging.
     """
     token = credentials.credentials
     user_id = decode_access_token(token)
@@ -49,7 +49,7 @@ async def get_current_user(
             detail="User account is disabled",
         )
 
-    # Set Sentry user context for error tracking
-    set_user_context(user_id=user.id, email=user.email, username=user.username)
+    # Set user context for structured logging
+    set_request_context(user_id=user.id, username=user.username)
 
     return user

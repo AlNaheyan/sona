@@ -1,3 +1,7 @@
+# Initialize structured logging FIRST (before any other imports)
+from backend.app.core.logging import setup_logging, api_logger
+setup_logging()
+
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -12,18 +16,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.core.config import settings
 from backend.app.core.database import engine, get_db
 from backend.app.core.rate_limit import limiter
-from backend.app.core.sentry import init_sentry
 from backend.app.models.base import Base
 from backend.app.models import Album, Artist, User, NumericRating  # noqa: F401 - for table creation
 from backend.app.api.v1 import api_router
+from backend.app.middleware.request_logging import RequestLoggingMiddleware
 from backend.app.services.health import get_system_health, get_liveness, get_readiness
-
-
-# Initialize Sentry (before app creation)
-sentry_enabled = init_sentry()
-if sentry_enabled:
-    import logging
-    logging.getLogger(__name__).info(f"Sentry initialized for environment: {settings.environment}")
 
 
 # OpenAPI Tags Metadata
@@ -149,6 +146,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Request logging middleware (adds request ID, timing, structured logs)
+app.add_middleware(RequestLoggingMiddleware)
+
 # Include API routes
 app.include_router(api_router)
 
@@ -207,11 +207,3 @@ async def root() -> dict[str, str]:
         "health_live": "/health/live",
         "health_ready": "/health/ready",
     }
-
-
-# Debug endpoint for testing Sentry (only in development)
-if settings.debug and sentry_enabled:
-    @app.get("/debug/sentry-test", include_in_schema=False)
-    async def trigger_error():
-        """Trigger a test error to verify Sentry integration."""
-        raise ValueError("This is a test error for Sentry")
