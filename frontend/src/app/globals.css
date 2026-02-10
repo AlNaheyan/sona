@@ -1,0 +1,125 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f5f0e8;
+  --foreground: #171717;
+  --silver: #b8b8b8;
+  --silver-light: #d4d4d4;
+  --silver-dark: #8a8a8a;
+  --cream: #f5f0e8;
+  --cream-dark: #ebe4d6;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-silver: var(--silver);
+  --color-silver-light: var(--silver-light);
+  --color-silver-dark: var(--silver-dark);
+  --color-cream: var(--cream);
+  --color-cream-dark: var(--cream-dark);
+  --font-serif: var(--font-instrument-serif);
+  --font-mono: var(--font-geist-mono);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+::selection {
+  background: rgba(23, 23, 23, 0.12);
+}
+
+/* Spinning vinyl */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes shimmer {
+  0% { opacity: 0.3; }
+  50% { opacity: 0.6; }
+  100% { opacity: 0.3; }
+}
+
+@keyframes pulse-glow {
+  0% { box-shadow: 0 0 30px rgba(0, 0, 0, 0.1); }
+  50% { box-shadow: 0 0 60px rgba(0, 0, 0, 0.15); }
+  100% { box-shadow: 0 0 30px rgba(0, 0, 0, 0.1); }
+}
+
+.vinyl {
+  animation: spin 8s linear infinite, pulse-glow 4s ease-in-out infinite;
+}
+
+.vinyl-shimmer {
+  animation: shimmer 3s ease-in-out infinite;
+}
+
+/* Vinyl grooves — tighter, more realistic */
+.vinyl-grooves {
+  background: repeating-radial-gradient(
+    circle at center,
+    transparent 0px,
+    transparent 1.5px,
+    rgba(0, 0, 0, 0.06) 1.5px,
+    rgba(0, 0, 0, 0.06) 2px,
+    transparent 2px,
+    transparent 3.5px,
+    rgba(0, 0, 0, 0.04) 3.5px,
+    rgba(0, 0, 0, 0.04) 4px
+  );
+}
+
+/* Vinyl shine sweep — more bands for realism */
+.vinyl-shine {
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    rgba(255, 255, 255, 0.12) 15deg,
+    rgba(255, 255, 255, 0.03) 30deg,
+    transparent 50deg,
+    rgba(255, 255, 255, 0.06) 90deg,
+    transparent 110deg,
+    transparent 140deg,
+    rgba(255, 255, 255, 0.10) 160deg,
+    rgba(255, 255, 255, 0.02) 180deg,
+    transparent 200deg,
+    rgba(255, 255, 255, 0.08) 250deg,
+    transparent 270deg,
+    rgba(255, 255, 255, 0.05) 310deg,
+    transparent 330deg,
+    rgba(255, 255, 255, 0.10) 350deg,
+    transparent 360deg
+  );
+}
+
+/* Rainbow iridescence */
+.vinyl-iridescence {
+  background: conic-gradient(
+    from 120deg,
+    transparent 0deg,
+    rgba(100, 60, 255, 0.04) 40deg,
+    rgba(60, 180, 255, 0.03) 80deg,
+    transparent 120deg,
+    rgba(255, 100, 60, 0.03) 200deg,
+    rgba(60, 255, 160, 0.04) 260deg,
+    transparent 300deg
+  );
+}
+
+/* ─── Marquee ─── */
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.marquee-track {
+  animation: marquee 35s linear infinite;
+  will-change: transform;
+}
