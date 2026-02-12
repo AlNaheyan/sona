@@ -10,6 +10,7 @@ import {
   Search,
 } from "lucide-react";
 import { useRef, useState, useEffect } from "react";
+import { useSession, signOut } from "@/lib/auth-client";
 
 /* ─────────────────────────────────────────────
    Grain Overlay — analog noise texture
@@ -33,12 +34,19 @@ function GrainOverlay() {
    ───────────────────────────────────────────── */
 function Navbar() {
   const [scrolled, setScrolled] = useState(false);
+  const { data: session } = useSession();
+  const isLoggedIn = !!session?.user;
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 60);
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
+
+  const handleSignOut = async () => {
+    await signOut();
+    window.location.reload();
+  };
 
   return (
     <motion.nav
@@ -53,18 +61,37 @@ function Navbar() {
     >
       <span className="font-serif text-xl tracking-tight">Sona</span>
       <div className="flex items-center gap-6">
-        <a
-          href="/login"
-          className="hidden sm:block font-mono text-[11px] tracking-[0.15em] uppercase text-silver-dark hover:text-foreground transition-colors duration-300"
-        >
-          Sign in
-        </a>
-        <a
-          href="/register"
-          className="font-mono text-[11px] tracking-[0.15em] uppercase px-5 py-2.5 border border-silver rounded-full hover:bg-foreground hover:text-cream hover:border-foreground transition-all duration-300"
-        >
-          Get Started
-        </a>
+        {isLoggedIn ? (
+          <>
+            <a
+              href="/dashboard"
+              className="hidden sm:block font-mono text-[11px] tracking-[0.15em] uppercase text-silver-dark hover:text-foreground transition-colors duration-300"
+            >
+              Dashboard
+            </a>
+            <button
+              onClick={handleSignOut}
+              className="font-mono text-[11px] tracking-[0.15em] uppercase px-5 py-2.5 border border-silver rounded-full hover:bg-foreground hover:text-cream hover:border-foreground transition-all duration-300"
+            >
+              Sign Out
+            </button>
+          </>
+        ) : (
+          <>
+            <a
+              href="/login"
+              className="hidden sm:block font-mono text-[11px] tracking-[0.15em] uppercase text-silver-dark hover:text-foreground transition-colors duration-300"
+            >
+              Sign in
+            </a>
+            <a
+              href="/register"
+              className="font-mono text-[11px] tracking-[0.15em] uppercase px-5 py-2.5 border border-silver rounded-full hover:bg-foreground hover:text-cream hover:border-foreground transition-all duration-300"
+            >
+              Get Started
+            </a>
+          </>
+        )}
       </div>
     </motion.nav>
   );
@@ -76,7 +103,7 @@ function Navbar() {
 function SpinningVinyl() {
   return (
     <div className="absolute top-1/2 -translate-y-1/2 right-0 translate-x-1/2 pointer-events-none select-none">
-      <div className="vinyl relative w-[600px] h-[600px] md:w-[700px] md:h-[700px] lg:w-[800px] lg:h-[800px] rounded-full bg-[radial-gradient(ellipse_at_30%_30%,#3a3a3a,#1a1a1a_40%,#0d0d0d_70%,#000000)]">
+      <div className="vinyl relative w-150 h-150 md:w-175 md:h-175 lg:w-200 lg:h-200 rounded-full bg-[radial-gradient(ellipse_at_30%_30%,#3a3a3a,#1a1a1a_40%,#0d0d0d_70%,#000000)]">
         <div className="absolute inset-0 rounded-full border-2 border-zinc-600/20" />
         <div className="absolute inset-px rounded-full border border-zinc-800/40" />
         <div className="vinyl-grooves absolute inset-[4%] rounded-full" />
