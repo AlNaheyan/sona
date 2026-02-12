@@ -5,6 +5,7 @@ from backend.app.api.v1.endpoints import (
     auth,
     community,
     comparisons,
+    profile,
     rankings,
     ratings,
     recommendations,
@@ -18,3 +19,4 @@ api_router.include_router(comparisons.router)
 api_router.include_router(rankings.router)
 api_router.include_router(community.router)
 api_router.include_router(recommendations.router)
+api_router.include_router(profile.router)

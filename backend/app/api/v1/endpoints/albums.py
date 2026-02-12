@@ -1,5 +1,7 @@
 """Album search and retrieval endpoints."""
 
+import asyncio
+
 from fastapi import APIRouter, Depends, Query, HTTPException, Request
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +15,13 @@ from backend.app.services.musicbrainz import musicbrainz_client
 
 router = APIRouter(prefix="/albums", tags=["albums"])
 
+COVER_ART_URL = "https://coverartarchive.org/release-group/{mbid}/front-250"
+
+
+def _cover_url_for(mbid: str, existing_url: str | None = None) -> str | None:
+    """Return existing cover URL or a deterministic Cover Art Archive URL."""
+    return existing_url or COVER_ART_URL.format(mbid=mbid)
+
 
 @router.get("/search", response_model=AlbumSearchResponse)
 @limiter.limit(RateLimits.SEARCH)
@@ -20,31 +29,41 @@ async def search_albums(
     request: Request,
     q: str = Query(..., min_length=1, description="Search query (album name)"),
     limit: int = Query(10, ge=1, le=25, description="Maximum number of results"),
-    include_covers: bool = Query(False, description="Fetch cover art (slower)"),
+    include_covers: bool = Query(False, description="Ignored (kept for backwards compat). Covers are always included via deterministic URLs."),
     db: AsyncSession = Depends(get_db),
 ) -> AlbumSearchResponse:
     """
-    Search for albums - checks local database first, then MusicBrainz.
+    Search for albums - checks local database and MusicBrainz in parallel.
 
     Returns album metadata including title, artist, release year.
-    Local DB results are prioritized to reduce external API calls.
-    Set include_covers=true to also fetch cover art URLs (makes request slower).
+    Cover art URLs are deterministic (Cover Art Archive) and don't require
+    extra API calls, so they're always included.
     """
-    results: list[AlbumSearchResult] = []
-    seen_mbids: set[str] = set()
 
-    # 1. Search local database first (case-insensitive title/artist match)
+    # Run DB and MusicBrainz searches in parallel
     search_pattern = f"%{q}%"
     local_query = (
         select(Album)
         .options(selectinload(Album.artists))
-        .where(
-            func.lower(Album.title).like(func.lower(search_pattern))
-        )
+        .where(func.lower(Album.title).like(func.lower(search_pattern)))
         .limit(limit)
     )
-    local_result = await db.execute(local_query)
-    local_albums = local_result.scalars().all()
+
+    async def db_search() -> list[Album]:
+        result = await db.execute(local_query)
+        return list(result.scalars().all())
+
+    async def mb_search() -> list:
+        try:
+            return await musicbrainz_client.search_albums(q, limit + 5)
+        except Exception:
+            return []
+
+    local_albums, mb_results = await asyncio.gather(db_search(), mb_search())
+
+    # Merge results: local DB first, then MusicBrainz (deduplicated)
+    results: list[AlbumSearchResult] = []
+    seen_mbids: set[str] = set()
 
     for album in local_albums:
         if album.mbid:
@@ -57,40 +76,30 @@ async def search_albums(
                 artist_name=artist.name if artist else None,
                 artist_mbid=artist.mbid if artist else None,
                 release_year=album.release_year,
-                cover_url=album.cover_url,
+                cover_url=_cover_url_for(album.mbid, album.cover_url),
             )
         )
 
-    # 2. If we need more results, fetch from MusicBrainz
-    if len(results) < limit:
-        remaining = limit - len(results)
-        try:
-            if include_covers:
-                mb_results = await musicbrainz_client.search_albums_with_covers(q, remaining + 5)
-            else:
-                mb_results = await musicbrainz_client.search_albums(q, remaining + 5)
+    for r in mb_results:
+        if r.mbid in seen_mbids:
+            continue
+        if len(results) >= limit:
+            break
+        seen_mbids.add(r.mbid)
+        results.append(
+            AlbumSearchResult(
+                mbid=r.mbid,
+                title=r.title,
+                artist_name=r.artist_name,
+                artist_mbid=r.artist_mbid,
+                release_year=r.release_year,
+                cover_url=_cover_url_for(r.mbid),
+            )
+        )
 
-            # Add MusicBrainz results, skipping duplicates
-            for r in mb_results:
-                if r.mbid in seen_mbids:
-                    continue
-                if len(results) >= limit:
-                    break
-                seen_mbids.add(r.mbid)
-                results.append(
-                    AlbumSearchResult(
-                        mbid=r.mbid,
-                        title=r.title,
-                        artist_name=r.artist_name,
-                        artist_mbid=r.artist_mbid,
-                        release_year=r.release_year,
-                        cover_url=r.cover_url,
-                    )
-                )
-        except Exception as e:
-            # If MusicBrainz fails but we have local results, return those
-            if not results:
-                raise HTTPException(status_code=503, detail=f"MusicBrainz API error: {str(e)}")
+    if not results:
+        # Both searches returned nothing
+        pass
 
     return AlbumSearchResponse(
         query=q,

@@ -6,12 +6,8 @@ const authRoutes = ["/login", "/register"];
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // BetterAuth stores session in a cookie named "better-auth.session_token"
-  const sessionToken =
-    request.cookies.get("better-auth.session_token")?.value ||
-    request.cookies.get("__Secure-better-auth.session_token")?.value;
-
-  const isLoggedIn = !!sessionToken;
+  const accessToken = request.cookies.get("access_token")?.value;
+  const isLoggedIn = !!accessToken;
 
   // Redirect logged-in users away from auth pages
   if (isLoggedIn && authRoutes.some((r) => pathname.startsWith(r))) {

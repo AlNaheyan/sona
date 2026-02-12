@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { apiFetch } from "@/lib/api";
 
 /* ─────────────────────────────────────────────
    Types
@@ -21,7 +22,7 @@ interface SearchResult {
   title: string;
   artist: string;
   year: number;
-  gradient: string;
+  coverUrl: string | null;
   initials: string;
 }
 
@@ -30,50 +31,37 @@ interface RatedAlbum extends SearchResult {
 }
 
 /* ─────────────────────────────────────────────
-   Mock Search Database
-   (Simulates backend /api/v1/albums/search)
+   Backend API Search
    ───────────────────────────────────────────── */
-const MOCK_DB: SearchResult[] = [
-  { id: "1", title: "OK Computer", artist: "Radiohead", year: 1997, gradient: "from-sky-900 to-slate-800", initials: "OK" },
-  { id: "2", title: "To Pimp a Butterfly", artist: "Kendrick Lamar", year: 2015, gradient: "from-emerald-800 to-yellow-900", initials: "TB" },
-  { id: "3", title: "Kind of Blue", artist: "Miles Davis", year: 1959, gradient: "from-blue-900 to-indigo-950", initials: "KB" },
-  { id: "4", title: "Random Access Memories", artist: "Daft Punk", year: 2013, gradient: "from-amber-700 to-stone-900", initials: "RA" },
-  { id: "5", title: "Rumours", artist: "Fleetwood Mac", year: 1977, gradient: "from-stone-700 to-neutral-900", initials: "Rm" },
-  { id: "6", title: "My Beautiful Dark Twisted Fantasy", artist: "Kanye West", year: 2010, gradient: "from-red-900 to-rose-950", initials: "MB" },
-  { id: "7", title: "Blue", artist: "Joni Mitchell", year: 1971, gradient: "from-cyan-800 to-blue-950", initials: "Bl" },
-  { id: "8", title: "Abbey Road", artist: "The Beatles", year: 1969, gradient: "from-sky-600 to-slate-700", initials: "AR" },
-  { id: "9", title: "Blonde", artist: "Frank Ocean", year: 2016, gradient: "from-orange-300 to-lime-200", initials: "Bd" },
-  { id: "10", title: "Loveless", artist: "My Bloody Valentine", year: 1991, gradient: "from-pink-700 to-fuchsia-950", initials: "Lv" },
-  { id: "11", title: "The Miseducation of Lauryn Hill", artist: "Lauryn Hill", year: 1998, gradient: "from-amber-800 to-orange-950", initials: "ML" },
-  { id: "12", title: "In Rainbows", artist: "Radiohead", year: 2007, gradient: "from-red-600 to-orange-800", initials: "IR" },
-  { id: "13", title: "Thriller", artist: "Michael Jackson", year: 1982, gradient: "from-yellow-600 to-amber-900", initials: "Th" },
-  { id: "14", title: "Discovery", artist: "Daft Punk", year: 2001, gradient: "from-blue-600 to-purple-800", initials: "Ds" },
-  { id: "15", title: "Vespertine", artist: "Bj\u00f6rk", year: 2001, gradient: "from-slate-200 to-zinc-400", initials: "Vp" },
-  { id: "16", title: "The Dark Side of the Moon", artist: "Pink Floyd", year: 1973, gradient: "from-gray-900 to-black", initials: "DS" },
-  { id: "17", title: "Nevermind", artist: "Nirvana", year: 1991, gradient: "from-cyan-600 to-blue-900", initials: "Nv" },
-  { id: "18", title: "good kid, m.A.A.d city", artist: "Kendrick Lamar", year: 2012, gradient: "from-zinc-700 to-neutral-900", initials: "gk" },
-  { id: "19", title: "A Love Supreme", artist: "John Coltrane", year: 1965, gradient: "from-orange-900 to-amber-950", initials: "AL" },
-  { id: "20", title: "Remain in Light", artist: "Talking Heads", year: 1980, gradient: "from-red-700 to-yellow-600", initials: "RL" },
-  { id: "21", title: "Hounds of Love", artist: "Kate Bush", year: 1985, gradient: "from-violet-800 to-indigo-900", initials: "HL" },
-  { id: "22", title: "The Queen Is Dead", artist: "The Smiths", year: 1986, gradient: "from-stone-600 to-zinc-800", initials: "QD" },
-  { id: "23", title: "Funeral", artist: "Arcade Fire", year: 2004, gradient: "from-slate-700 to-stone-900", initials: "Fn" },
-  { id: "24", title: "Melodrama", artist: "Lorde", year: 2017, gradient: "from-blue-500 to-purple-700", initials: "Md" },
-  { id: "25", title: "Channel Orange", artist: "Frank Ocean", year: 2012, gradient: "from-orange-500 to-amber-700", initials: "CO" },
-  { id: "26", title: "Currents", artist: "Tame Impala", year: 2015, gradient: "from-rose-500 to-purple-600", initials: "Cu" },
-  { id: "27", title: "Igor", artist: "Tyler, The Creator", year: 2019, gradient: "from-pink-400 to-rose-600", initials: "Ig" },
-  { id: "28", title: "Homework", artist: "Daft Punk", year: 1997, gradient: "from-yellow-500 to-red-600", initials: "Hw" },
-  { id: "29", title: "Is This It", artist: "The Strokes", year: 2001, gradient: "from-sky-400 to-blue-700", initials: "IT" },
-  { id: "30", title: "Songs in the Key of Life", artist: "Stevie Wonder", year: 1976, gradient: "from-yellow-700 to-orange-900", initials: "SK" },
-];
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-function searchAlbums(query: string): SearchResult[] {
+function getInitials(title: string): string {
+  const words = title.split(/\s+/).filter((w) => w.length > 0);
+  if (words.length === 1) return words[0].slice(0, 2);
+  return (words[0][0] + words[1][0]).toUpperCase();
+}
+
+async function searchAlbums(query: string): Promise<SearchResult[]> {
   if (!query.trim()) return [];
-  const q = query.toLowerCase();
-  return MOCK_DB.filter(
-    (a) =>
-      a.title.toLowerCase().includes(q) ||
-      a.artist.toLowerCase().includes(q)
-  ).slice(0, 6);
+  try {
+    const res = await fetch(
+      `${API_BASE}/api/v1/albums/search?q=${encodeURIComponent(query)}&limit=8`
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.results || []).map(
+      (r: { mbid: string; title: string; artist_name: string; release_year: number | null; cover_url: string | null }) => ({
+        id: r.mbid,
+        title: r.title,
+        artist: r.artist_name,
+        year: r.release_year || 0,
+        coverUrl: r.cover_url,
+        initials: getInitials(r.title),
+      })
+    );
+  } catch {
+    return [];
+  }
 }
 
 const GENRES = [
@@ -159,11 +147,25 @@ function AlbumThumb({
   album: SearchResult;
   size?: "sm" | "xs";
 }) {
+  const [imgFailed, setImgFailed] = useState(false);
   const dim = size === "sm" ? "w-12 h-12" : "w-9 h-9";
   const text = size === "sm" ? "text-[10px]" : "text-[8px]";
+
+  if (album.coverUrl && !imgFailed) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={album.coverUrl}
+        alt={album.title}
+        className={`${dim} rounded-lg object-cover shrink-0`}
+        onError={() => setImgFailed(true)}
+      />
+    );
+  }
+
   return (
     <div
-      className={`${dim} rounded-lg bg-linear-to-br ${album.gradient} flex items-center justify-center shrink-0`}
+      className={`${dim} rounded-lg bg-linear-to-br from-zinc-700 to-zinc-900 flex items-center justify-center shrink-0`}
     >
       <span className={`font-serif ${text} text-white/40 italic select-none`}>
         {album.initials}
@@ -351,17 +353,26 @@ function SearchRateStep({
   const canContinue = ratedAlbums.length >= 5;
 
   // Debounced search
+  const [isSearching, setIsSearching] = useState(false);
   const trimmedQuery = query.trim();
   useEffect(() => {
     if (!trimmedQuery) return;
-    const timer = setTimeout(() => {
-      const found = searchAlbums(trimmedQuery).filter(
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      setIsSearching(true);
+      const found = await searchAlbums(trimmedQuery);
+      if (cancelled) return;
+      const filtered = found.filter(
         (r) => !ratedAlbums.some((ra) => ra.id === r.id)
       );
-      setResults(found);
+      setResults(filtered);
       setShowResults(true);
-    }, 200);
-    return () => clearTimeout(timer);
+      setIsSearching(false);
+    }, 150);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [trimmedQuery, ratedAlbums]);
 
   // Clear results when query is empty
@@ -467,7 +478,7 @@ function SearchRateStep({
           )}
         </AnimatePresence>
 
-        {showResults && query.trim() && results.length === 0 && (
+        {showResults && query.trim() && results.length === 0 && !isSearching && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -475,6 +486,17 @@ function SearchRateStep({
           >
             <p className="font-mono text-xs text-silver-dark text-center">
               No albums found for &ldquo;{query}&rdquo;
+            </p>
+          </motion.div>
+        )}
+        {isSearching && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="absolute top-full mt-2 w-full bg-background border border-silver-light rounded-xl p-4 shadow-lg z-30"
+          >
+            <p className="font-mono text-xs text-silver-dark text-center animate-pulse">
+              Searching...
             </p>
           </motion.div>
         )}
@@ -645,14 +667,14 @@ function SearchRateStep({
 /* ─────────────────────────────────────────────
    Step 4 — Profile Setup
    ───────────────────────────────────────────── */
-function ProfileStep({ onComplete }: { onComplete: () => void }) {
+function ProfileStep({ onComplete, isSubmitting }: { onComplete: (profile: { displayName: string; bio: string; spotifyUsername: string }) => void; isSubmitting: boolean }) {
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
   const [spotifyUsername, setSpotifyUsername] = useState("");
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const canComplete = displayName.trim().length >= 2;
+  const canComplete = displayName.trim().length >= 2 && !isSubmitting;
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -768,14 +790,14 @@ function ProfileStep({ onComplete }: { onComplete: () => void }) {
       {/* Complete */}
       <motion.div variants={fadeUp}>
         <motion.button
-          onClick={onComplete}
+          onClick={() => onComplete({ displayName: displayName.trim(), bio: bio.trim(), spotifyUsername: spotifyUsername.trim() })}
           disabled={!canComplete}
           whileHover={canComplete ? { scale: 1.03 } : {}}
           whileTap={canComplete ? { scale: 0.97 } : {}}
           className="font-mono text-sm tracking-widest uppercase py-4 px-12 bg-foreground text-cream rounded-full transition-all duration-300 disabled:opacity-30 disabled:cursor-not-allowed hover:shadow-[0_8px_30px_rgba(0,0,0,0.12)] inline-flex items-center gap-3"
         >
-          Go to Dashboard
-          <ArrowRight className="w-4 h-4" />
+          {isSubmitting ? "Saving..." : "Go to Dashboard"}
+          {!isSubmitting && <ArrowRight className="w-4 h-4" />}
         </motion.button>
       </motion.div>
     </motion.div>
@@ -819,10 +841,37 @@ export default function OnboardingPage() {
     );
   }, []);
 
-  const handleComplete = useCallback(() => {
-    // TODO: Save onboarding data (genres, rated albums, profile) to backend
-    router.push("/dashboard");
-  }, [router]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleComplete = useCallback(async (profile: { displayName: string; bio: string; spotifyUsername: string }) => {
+    setIsSubmitting(true);
+    try {
+      // Submit all rated albums to backend
+      await Promise.all(
+        ratedAlbums.map((album) =>
+          apiFetch("/api/v1/ratings", {
+            method: "POST",
+            body: JSON.stringify({ mbid: album.id, value: album.rating }),
+          })
+        )
+      );
+
+      // Save profile data
+      await apiFetch("/api/v1/profile/me", {
+        method: "PUT",
+        body: JSON.stringify({
+          display_name: profile.displayName,
+          bio: profile.bio || null,
+          spotify_username: profile.spotifyUsername || null,
+          favorite_genres: selectedGenres.join(",") || null,
+        }),
+      });
+
+      router.push("/dashboard");
+    } catch {
+      setIsSubmitting(false);
+    }
+  }, [ratedAlbums, selectedGenres, router]);
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
@@ -867,7 +916,7 @@ export default function OnboardingPage() {
                 onNext={goNext}
               />
             )}
-            {step === 4 && <ProfileStep onComplete={handleComplete} />}
+            {step === 4 && <ProfileStep onComplete={handleComplete} isSubmitting={isSubmitting} />}
           </motion.div>
         </AnimatePresence>
       </div>

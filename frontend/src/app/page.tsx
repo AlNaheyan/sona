@@ -10,7 +10,7 @@ import {
   Search,
 } from "lucide-react";
 import { useRef, useState, useEffect } from "react";
-import { useSession, signOut } from "@/lib/auth-client";
+import { useAuth } from "@/contexts/auth";
 
 /* ─────────────────────────────────────────────
    Grain Overlay — analog noise texture
@@ -34,19 +34,13 @@ function GrainOverlay() {
    ───────────────────────────────────────────── */
 function Navbar() {
   const [scrolled, setScrolled] = useState(false);
-  const { data: session } = useSession();
-  const isLoggedIn = !!session?.user;
+  const { user, logout } = useAuth();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 60);
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
-
-  const handleSignOut = async () => {
-    await signOut();
-    window.location.reload();
-  };
 
   return (
     <motion.nav
@@ -61,7 +55,7 @@ function Navbar() {
     >
       <span className="font-serif text-xl tracking-tight">Sona</span>
       <div className="flex items-center gap-6">
-        {isLoggedIn ? (
+        {user ? (
           <>
             <a
               href="/dashboard"
@@ -70,7 +64,7 @@ function Navbar() {
               Dashboard
             </a>
             <button
-              onClick={handleSignOut}
+              onClick={logout}
               className="font-mono text-[11px] tracking-[0.15em] uppercase px-5 py-2.5 border border-silver rounded-full hover:bg-foreground hover:text-cream hover:border-foreground transition-all duration-300"
             >
               Sign Out

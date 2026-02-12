@@ -186,14 +186,19 @@ class MusicBrainzClient:
         """
         Search for albums and fetch cover art for each result.
 
-        Note: This makes multiple API calls, so it's slower but provides complete data.
+        Cover art is fetched in parallel from Cover Art Archive (separate
+        service from MusicBrainz, no shared rate limit).
         Cover art URLs are cached individually for 7 days.
         """
         results = await self.search_albums(query, limit)
 
-        # Fetch cover art for each result (in parallel, but respecting rate limits)
-        for result in results:
-            result.cover_url = await self.get_cover_art_url(result.mbid)
+        # Fetch all cover art in parallel — Cover Art Archive has no rate limit
+        covers = await asyncio.gather(
+            *(self.get_cover_art_url(r.mbid) for r in results),
+            return_exceptions=True,
+        )
+        for result, cover in zip(results, covers):
+            result.cover_url = cover if isinstance(cover, str) else None
 
         return results
 

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Instrument_Serif, Geist_Mono } from "next/font/google";
+import { Providers } from "./providers";
 import "./globals.css";
 
 const instrumentSerif = Instrument_Serif({
@@ -29,7 +30,7 @@ export default function RootLayout({
         suppressHydrationWarning
         className={`${instrumentSerif.variable} ${geistMono.variable} antialiased`}
       >
-        {children}
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

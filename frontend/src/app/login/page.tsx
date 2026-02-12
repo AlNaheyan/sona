@@ -5,7 +5,7 @@ import { ArrowLeft, Eye, EyeOff } from "lucide-react";
 import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { signIn } from "@/lib/auth-client";
+import { useAuth, ApiError } from "@/contexts/auth";
 
 /* ─────────────────────────────────────────────
    Auth Vinyl (half off-screen left)
@@ -13,7 +13,7 @@ import { signIn } from "@/lib/auth-client";
 function AuthVinyl() {
   return (
     <div className="absolute top-1/2 -translate-y-1/2 left-0 -translate-x-1/2 pointer-events-none select-none">
-      <div className="vinyl relative w-[700px] h-[700px] lg:w-[800px] lg:h-[800px] rounded-full bg-[radial-gradient(ellipse_at_30%_30%,#3a3a3a,#1a1a1a_40%,#0d0d0d_70%,#000000)]">
+      <div className="vinyl relative w-175 h-175 lg:w-200 lg:h-200 rounded-full bg-[radial-gradient(ellipse_at_30%_30%,#3a3a3a,#1a1a1a_40%,#0d0d0d_70%,#000000)]">
         <div className="absolute inset-0 rounded-full border-2 border-zinc-600/20" />
         <div className="absolute inset-px rounded-full border border-zinc-800/40" />
         <div className="vinyl-grooves absolute inset-[4%] rounded-full" />
@@ -72,6 +72,7 @@ const item = {
    ───────────────────────────────────────────── */
 export default function LoginPage() {
   const router = useRouter();
+  const { login } = useAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -115,15 +116,14 @@ export default function LoginPage() {
     if (Object.keys(validationErrors).length > 0) return;
 
     setIsSubmitting(true);
-    const { error } = await signIn.email({ email, password });
-
-    if (error) {
+    try {
+      await login(email, password);
+      router.push("/dashboard");
+    } catch (err) {
       setIsSubmitting(false);
-      setErrors({ email: error.message || "Invalid email or password" });
-      return;
+      const message = err instanceof ApiError ? err.message : "Invalid email or password";
+      setErrors({ email: message });
     }
-
-    router.push("/dashboard");
   };
 
   return (

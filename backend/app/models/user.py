@@ -23,6 +23,9 @@ class User(Base, UUIDMixin, TimestampMixin):
     album_elos: Mapped[list["UserAlbumElo"]] = relationship(
         "UserAlbumElo", back_populates="user", cascade="all, delete-orphan"
     )
+    profile: Mapped["UserProfile | None"] = relationship(
+        "UserProfile", back_populates="user", uselist=False, cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<User {self.username}>"
@@ -34,3 +37,4 @@ from backend.app.models.rating import (
     PairwiseComparison,
     UserAlbumElo,
 )
+from backend.app.models.profile import UserProfile

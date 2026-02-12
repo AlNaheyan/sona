@@ -6,6 +6,7 @@ from backend.app.models.rating import (
     PairwiseComparison,
     UserAlbumElo,
 )
+from backend.app.models.profile import UserProfile
 
 __all__ = [
     "Base",
@@ -15,4 +16,5 @@ __all__ = [
     "NumericRating",
     "PairwiseComparison",
     "UserAlbumElo",
+    "UserProfile",
 ]
