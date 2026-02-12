@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "RateMyAlbum",
+  title: "Sona",
   description: "Rank the music you love. Discover what's next.",
 };
 

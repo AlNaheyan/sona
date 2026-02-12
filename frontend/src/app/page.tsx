@@ -51,7 +51,7 @@ function Navbar() {
           : ""
       }`}
     >
-      <span className="font-serif text-xl tracking-tight">RateMyAlbum</span>
+      <span className="font-serif text-xl tracking-tight">Sona</span>
       <div className="flex items-center gap-6">
         <a
           href="/login"
@@ -95,7 +95,7 @@ function SpinningVinyl() {
           <div className="absolute inset-[15%] rounded-full border border-black/3" />
           <div className="absolute inset-0 flex flex-col items-center justify-center">
             <span className="font-serif text-[10px] md:text-xs text-zinc-600/60 tracking-[0.2em] uppercase">
-              RateMyAlbum
+              Sona
             </span>
             <div className="w-[30%] h-px bg-zinc-500/20 my-1.5" />
             <span className="font-mono text-[7px] md:text-[8px] text-zinc-500/40 tracking-wider">
@@ -945,7 +945,7 @@ function Footer() {
       <div className="max-w-5xl mx-auto">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-8">
           <div>
-            <span className="font-serif text-xl block mb-1">RateMyAlbum</span>
+            <span className="font-serif text-xl block mb-1">Sona</span>
             <span className="font-mono text-[11px] text-silver-dark">
               Rank the music you love.
             </span>
@@ -973,7 +973,7 @@ function Footer() {
         </div>
         <div className="mt-8 pt-6 border-t border-silver-light/50 flex items-center justify-between">
           <span className="font-mono text-[11px] text-silver">
-            &copy; {new Date().getFullYear()} RateMyAlbum
+            &copy; {new Date().getFullYear()} Sona
           </span>
           <span className="font-mono text-[10px] text-silver-light tracking-widest uppercase">
             Every album has a place
