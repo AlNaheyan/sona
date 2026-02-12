@@ -58,7 +58,7 @@ logs/
 *.db
 *.sqlite3
 
-
+.claude
 CLAUDE.md
 plan.md
 /docs
