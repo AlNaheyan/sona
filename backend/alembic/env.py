@@ -17,6 +17,7 @@ from backend.app.models import (
     PairwiseComparison,
     UserAlbumElo,
     UserProfile,
+    WantToListen,
 )
 
 config = context.config

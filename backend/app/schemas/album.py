@@ -99,6 +99,32 @@ class AlbumListResponse(BaseModel):
 
 
 # ============================================================================
+# Album Detail Schema (enriched view for modal)
+# ============================================================================
+
+
+class AlbumDetail(BaseModel):
+    """Full album detail combining metadata, community stats, and user data."""
+
+    mbid: str = Field(..., description="MusicBrainz release-group ID")
+    title: str = Field(..., description="Album title")
+    artist_name: str = Field(..., description="Primary artist name")
+    release_year: int | None = Field(None, description="Year of first release")
+    cover_url: str | None = Field(None, description="Cover art URL")
+    genres: list[str] = Field(default_factory=list, description="Genre tags")
+
+    # Community stats (null if album not yet in local DB)
+    community_rating_count: int = Field(0, description="Number of community ratings")
+    community_average_rating: float | None = Field(None, description="Community average rating (1-10)")
+    community_bayesian_score: float | None = Field(None, description="Bayesian-weighted community score")
+
+    # User-specific data (null if user hasn't interacted)
+    user_rating: float | None = Field(None, description="User's 1-10 rating, or null if not rated")
+    user_elo: float | None = Field(None, description="User's Elo score for this album")
+    user_rank: int | None = Field(None, description="User's rank for this album")
+
+
+# ============================================================================
 # Community Rankings Schemas
 # ============================================================================
 

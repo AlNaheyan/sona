@@ -37,6 +37,7 @@ class AlbumSearchResult:
     artist_mbid: str | None
     release_year: int | None
     cover_url: str | None
+    genres: list[str] | None = None
 
     def to_dict(self) -> dict:
         """Convert to dictionary for caching."""
@@ -228,7 +229,7 @@ class MusicBrainzClient:
             async with httpx.AsyncClient() as client:
                 response = await client.get(
                     f"{MUSICBRAINZ_BASE_URL}/release-group/{mbid}",
-                    params={"inc": "artist-credits", "fmt": "json"},
+                    params={"inc": "artist-credits+genres", "fmt": "json"},
                     headers={"User-Agent": USER_AGENT},
                     timeout=10.0,
                 )
@@ -257,6 +258,9 @@ class MusicBrainzClient:
 
         cover_url = await self.get_cover_art_url(mbid)
 
+        # Parse genres
+        genres = [g["name"] for g in rg.get("genres", []) if g.get("name")]
+
         result = AlbumSearchResult(
             mbid=rg["id"],
             title=rg.get("title", "Unknown Title"),
@@ -264,6 +268,7 @@ class MusicBrainzClient:
             artist_mbid=artist_mbid,
             release_year=release_year,
             cover_url=cover_url,
+            genres=genres or None,
         )
 
         # Cache result

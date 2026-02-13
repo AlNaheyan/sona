@@ -58,6 +58,7 @@ async def get_my_rankings(
             RankedAlbumOut(
                 rank=i,
                 album_id=elo.album_id,
+                album_mbid=album.mbid,
                 album_title=album.title,
                 album_artist=artist_name,
                 album_cover_url=album.cover_url,

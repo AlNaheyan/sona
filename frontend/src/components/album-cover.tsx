@@ -9,6 +9,7 @@ const sizes = {
   lg: { dim: "w-20 h-20", text: "text-sm" },
   xl: { dim: "w-28 h-28", text: "text-base" },
   "2xl": { dim: "w-36 h-36", text: "text-lg" },
+  "3xl": { dim: "w-44 h-44", text: "text-xl" },
 } as const;
 
 type Size = keyof typeof sizes;

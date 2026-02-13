@@ -152,6 +152,7 @@ class RankedAlbumOut(BaseModel):
 
     rank: int = Field(..., description="Position in personal ranking (1 = best)")
     album_id: str = Field(..., description="Internal album ID")
+    album_mbid: str | None = Field(None, description="MusicBrainz release-group ID")
     album_title: str = Field(..., description="Album title")
     album_artist: str | None = Field(None, description="Primary artist name")
     album_cover_url: str | None = Field(None, description="Cover art URL")
@@ -166,6 +167,7 @@ class RankedAlbumOut(BaseModel):
                 {
                     "rank": 1,
                     "album_id": "550e8400-e29b-41d4-a716-446655440001",
+                    "album_mbid": "a4864e94-6d75-4ade-bc93-0b389f5c1b8a",
                     "album_title": "OK Computer",
                     "album_artist": "Radiohead",
                     "album_cover_url": "https://coverartarchive.org/...",

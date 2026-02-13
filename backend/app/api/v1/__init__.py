@@ -9,6 +9,7 @@ from backend.app.api.v1.endpoints import (
     rankings,
     ratings,
     recommendations,
+    wishlist,
 )
 
 api_router = APIRouter(prefix="/api/v1")
@@ -20,3 +21,4 @@ api_router.include_router(rankings.router)
 api_router.include_router(community.router)
 api_router.include_router(recommendations.router)
 api_router.include_router(profile.router)
+api_router.include_router(wishlist.router)

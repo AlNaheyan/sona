@@ -7,10 +7,13 @@ from sqlalchemy import select, func, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from backend.app.api.deps import get_current_user
 from backend.app.core.database import get_db
 from backend.app.core.rate_limit import limiter, RateLimits
 from backend.app.models.album import Album, Artist, album_artists
-from backend.app.schemas.album import AlbumSearchResult, AlbumSearchResponse, AlbumOut, AlbumListResponse
+from backend.app.models.rating import NumericRating, UserAlbumElo
+from backend.app.models.user import User
+from backend.app.schemas.album import AlbumSearchResult, AlbumSearchResponse, AlbumOut, AlbumListResponse, AlbumDetail
 from backend.app.services.musicbrainz import musicbrainz_client
 
 router = APIRouter(prefix="/albums", tags=["albums"])
@@ -172,6 +175,123 @@ async def list_albums(
         total=total,
         limit=limit,
         offset=offset,
+    )
+
+
+@router.get("/{mbid}/detail", response_model=AlbumDetail)
+async def get_album_detail(
+    mbid: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> AlbumDetail:
+    """
+    Get enriched album detail: metadata, genres, community stats, and user data.
+
+    Checks local DB first (fast, has community stats + user data), then
+    enriches with MusicBrainz metadata (genres). Never fails if the album
+    exists in either source.
+    """
+    # 1. Check local DB first — fast and has all rating/community data
+    result = await db.execute(
+        select(Album)
+        .where(Album.mbid == mbid)
+        .options(selectinload(Album.artists))
+    )
+    local_album = result.scalar_one_or_none()
+
+    # 2. Try MusicBrainz for enrichment (genres), but don't fail if it errors
+    mb_result = None
+    try:
+        mb_result = await musicbrainz_client.get_album_by_mbid(mbid)
+    except Exception:
+        pass
+
+    # 3. Must exist in at least one source
+    if not local_album and not mb_result:
+        raise HTTPException(status_code=404, detail="Album not found")
+
+    # 4. Resolve metadata: prefer local DB (it's authoritative), enrich from MB
+    title = local_album.title if local_album else mb_result.title
+    artist_name = (
+        (local_album.artists[0].name if local_album and local_album.artists else None)
+        or (mb_result.artist_name if mb_result else "Unknown Artist")
+    )
+    release_year = (
+        local_album.release_year if local_album and local_album.release_year
+        else (mb_result.release_year if mb_result else None)
+    )
+    cover_url = (
+        local_album.cover_url if local_album and local_album.cover_url
+        else (mb_result.cover_url if mb_result else None)
+    ) or _cover_url_for(mbid)
+
+    # 5. Genres: prefer MusicBrainz (fresh), fall back to local DB
+    genres: list[str] = []
+    if mb_result and mb_result.genres:
+        genres = mb_result.genres
+    elif local_album and local_album.genres:
+        genres = [g.strip() for g in local_album.genres.split(",") if g.strip()]
+
+    # 6. Community stats from local DB
+    community_rating_count = 0
+    community_average_rating = None
+    community_bayesian_score = None
+
+    if local_album:
+        community_rating_count = local_album.rating_count
+        if local_album.rating_count > 0:
+            community_average_rating = round(local_album.rating_sum / local_album.rating_count, 1)
+        community_bayesian_score = local_album.bayesian_score
+
+    # 7. User's personal data
+    user_rating = None
+    user_elo = None
+    user_rank = None
+
+    if local_album:
+        # User's numeric rating
+        rating_result = await db.execute(
+            select(NumericRating.value).where(
+                NumericRating.user_id == current_user.id,
+                NumericRating.album_id == local_album.id,
+            )
+        )
+        rating_row = rating_result.scalar_one_or_none()
+        if rating_row is not None:
+            user_rating = rating_row
+
+        # User's Elo and rank
+        elo_result = await db.execute(
+            select(UserAlbumElo).where(
+                UserAlbumElo.user_id == current_user.id,
+                UserAlbumElo.album_id == local_album.id,
+            )
+        )
+        elo_record = elo_result.scalar_one_or_none()
+        if elo_record:
+            user_elo = elo_record.elo
+            # Compute rank: count albums with higher Elo
+            rank_result = await db.execute(
+                select(func.count(UserAlbumElo.id)).where(
+                    UserAlbumElo.user_id == current_user.id,
+                    UserAlbumElo.elo > elo_record.elo,
+                )
+            )
+            user_rank = (rank_result.scalar() or 0) + 1
+
+    return AlbumDetail(
+        mbid=mbid,
+        title=title,
+        artist_name=artist_name,
+        release_year=release_year,
+        cover_url=cover_url,
+        genres=genres,
+        community_rating_count=community_rating_count,
+        community_average_rating=community_average_rating,
+        community_bayesian_score=community_bayesian_score,
+        user_rating=user_rating,
+        user_elo=user_elo,
+        user_rank=user_rank,
     )
 
 

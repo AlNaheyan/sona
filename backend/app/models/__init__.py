@@ -7,6 +7,7 @@ from backend.app.models.rating import (
     UserAlbumElo,
 )
 from backend.app.models.profile import UserProfile
+from backend.app.models.wishlist import WantToListen
 
 __all__ = [
     "Base",
@@ -17,4 +18,5 @@ __all__ = [
     "PairwiseComparison",
     "UserAlbumElo",
     "UserProfile",
+    "WantToListen",
 ]

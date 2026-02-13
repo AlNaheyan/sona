@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { Search, X, Clock } from "lucide-react";
 import { stagger, fadeUp } from "@/components/motion";
 import { AlbumCover } from "@/components/album-cover";
+import { AlbumDetailModal } from "@/components/album-detail-modal";
 import { EmptyState } from "@/components/empty-state";
 import { SectionLabel } from "@/components/section-label";
 import { apiFetch } from "@/lib/api";
@@ -106,6 +107,7 @@ function AlbumsTab() {
   const [isLoading, setIsLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [selectedAlbum, setSelectedAlbum] = useState<AlbumSearchResult | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -169,11 +171,12 @@ function AlbumsTab() {
     executeSearch(term);
   };
 
-  const handleResultClick = () => {
+  const handleResultClick = (album: AlbumSearchResult) => {
     if (query.trim()) {
       saveRecentSearch(query);
       setRecentSearches(getRecentSearches());
     }
+    setSelectedAlbum(album);
   };
 
   const handleClearRecent = () => {
@@ -263,7 +266,7 @@ function AlbumsTab() {
             <motion.div
               key={album.mbid}
               variants={fadeUp}
-              onClick={handleResultClick}
+              onClick={() => handleResultClick(album)}
               className="flex items-center gap-3 p-3 rounded-xl border border-silver-light/30 hover:border-silver-light/60 transition-colors duration-200 cursor-pointer"
             >
               <AlbumCover
@@ -292,6 +295,11 @@ function AlbumsTab() {
       {!isLoading && hasSearched && results.length === 0 && (
         <p className="font-mono text-sm text-silver-dark">No albums found.</p>
       )}
+
+      <AlbumDetailModal
+        album={selectedAlbum}
+        onClose={() => setSelectedAlbum(null)}
+      />
     </div>
   );
 }

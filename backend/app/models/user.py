@@ -26,6 +26,9 @@ class User(Base, UUIDMixin, TimestampMixin):
     profile: Mapped["UserProfile | None"] = relationship(
         "UserProfile", back_populates="user", uselist=False, cascade="all, delete-orphan"
     )
+    want_to_listen: Mapped[list["WantToListen"]] = relationship(
+        "WantToListen", back_populates="user", cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<User {self.username}>"
@@ -38,3 +41,4 @@ from backend.app.models.rating import (
     UserAlbumElo,
 )
 from backend.app.models.profile import UserProfile
+from backend.app.models.wishlist import WantToListen
