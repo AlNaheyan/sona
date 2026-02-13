@@ -3,13 +3,13 @@
 import asyncio
 
 from fastapi import APIRouter, Depends, Query, HTTPException, Request
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from backend.app.core.database import get_db
 from backend.app.core.rate_limit import limiter, RateLimits
-from backend.app.models.album import Album
+from backend.app.models.album import Album, Artist, album_artists
 from backend.app.schemas.album import AlbumSearchResult, AlbumSearchResponse, AlbumOut, AlbumListResponse
 from backend.app.services.musicbrainz import musicbrainz_client
 
@@ -27,7 +27,7 @@ def _cover_url_for(mbid: str, existing_url: str | None = None) -> str | None:
 @limiter.limit(RateLimits.SEARCH)
 async def search_albums(
     request: Request,
-    q: str = Query(..., min_length=1, description="Search query (album name)"),
+    q: str = Query(..., min_length=1, description="Search query (album name or artist)"),
     limit: int = Query(10, ge=1, le=25, description="Maximum number of results"),
     include_covers: bool = Query(False, description="Ignored (kept for backwards compat). Covers are always included via deterministic URLs."),
     db: AsyncSession = Depends(get_db),
@@ -41,11 +41,25 @@ async def search_albums(
     """
 
     # Run DB and MusicBrainz searches in parallel
-    search_pattern = f"%{q}%"
+    # Split query into terms — each term must match either title or artist
+    terms = q.split()
+    term_filters = []
+    for term in terms:
+        pattern = f"%{term}%"
+        term_filters.append(
+            or_(
+                func.lower(Album.title).like(func.lower(pattern)),
+                func.lower(Artist.name).like(func.lower(pattern)),
+            )
+        )
+
     local_query = (
         select(Album)
         .options(selectinload(Album.artists))
-        .where(func.lower(Album.title).like(func.lower(search_pattern)))
+        .outerjoin(album_artists, Album.id == album_artists.c.album_id)
+        .outerjoin(Artist, Artist.id == album_artists.c.artist_id)
+        .where(and_(*term_filters))
+        .distinct()
         .limit(limit)
     )
 

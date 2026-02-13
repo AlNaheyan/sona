@@ -19,7 +19,7 @@ import { useAuth } from "@/contexts/auth";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard" },
-  { icon: Trophy, label: "Rankings", href: "/rankings" },
+  { icon: Trophy, label: "My Ranking", href: "/rankings" },
   { icon: Users, label: "Community", href: "/community" },
   { icon: Sparkles, label: "Recommendations", href: "/recommendations" },
   { icon: Search, label: "Search", href: "/search" },
