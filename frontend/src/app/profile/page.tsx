@@ -1,11 +1,16 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Trophy } from "lucide-react";
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/auth";
 import { apiFetch, ApiError } from "@/lib/api";
+import { stagger, fadeUp } from "@/components/motion";
+import { AlbumCover } from "@/components/album-cover";
+import { SectionLabel } from "@/components/section-label";
+import { StatCard } from "@/components/stat-card";
+import { EmptyState } from "@/components/empty-state";
 
 /* ─────────────────────────────────────────────
    Types
@@ -21,25 +26,21 @@ interface ProfileData {
   member_since: string;
 }
 
-/* ─────────────────────────────────────────────
-   Animation Variants
-   ───────────────────────────────────────────── */
-const stagger = {
-  hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: { staggerChildren: 0.06, delayChildren: 0.15 },
-  },
-};
+interface RankedAlbum {
+  rank: number;
+  album_id: string;
+  album_title: string;
+  album_artist: string | null;
+  album_cover_url: string | null;
+  elo: number;
+  rating_count: number;
+  comparison_count: number;
+}
 
-const fadeUp = {
-  hidden: { opacity: 0, y: 16 },
-  show: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.5, ease: [0.16, 1, 0.3, 1] as const },
-  },
-};
+interface RankingsResponse {
+  rankings: RankedAlbum[];
+  count: number;
+}
 
 /* ─────────────────────────────────────────────
    Helpers
@@ -61,6 +62,7 @@ function formatMemberSince(dateStr: string): string {
 export default function ProfilePage() {
   const { user, isLoading: authLoading } = useAuth();
   const [profile, setProfile] = useState<ProfileData | null>(null);
+  const [topAlbums, setTopAlbums] = useState<RankedAlbum[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [imgFailed, setImgFailed] = useState(false);
@@ -68,14 +70,19 @@ export default function ProfilePage() {
   useEffect(() => {
     if (authLoading || !user) return;
 
-    apiFetch<ProfileData>(`/api/v1/profile/${user.username}`)
+    const profileReq = apiFetch<ProfileData>(`/api/v1/profile/${user.username}`)
       .then(setProfile)
       .catch((err) => {
         if (err instanceof ApiError && err.status === 404) {
           setNotFound(true);
         }
-      })
-      .finally(() => setIsLoading(false));
+      });
+
+    const rankingsReq = apiFetch<RankingsResponse>("/api/v1/rankings?limit=5")
+      .then((data) => setTopAlbums(data.rankings))
+      .catch(() => {});
+
+    Promise.all([profileReq, rankingsReq]).finally(() => setIsLoading(false));
   }, [authLoading, user]);
 
   // Auth loading
@@ -102,20 +109,12 @@ export default function ProfilePage() {
             Back to Dashboard
           </Link>
 
-          <div className="border border-dashed border-silver-light/40 rounded-2xl p-12 text-center">
-            <p className="font-serif text-2xl tracking-tight mb-3">
-              No profile yet.
-            </p>
-            <p className="font-mono text-xs text-silver-dark mb-8">
-              Complete onboarding to set up your profile.
-            </p>
-            <Link
-              href="/onboarding"
-              className="font-mono text-sm tracking-widest uppercase py-3.5 px-10 bg-foreground text-cream rounded-full hover:shadow-[0_8px_30px_rgba(0,0,0,0.12)] transition-shadow duration-300"
-            >
-              Set Up Profile
-            </Link>
-          </div>
+          <EmptyState
+            heading="No profile yet."
+            description="Complete onboarding to set up your profile."
+            actionLabel="Set Up Profile"
+            actionHref="/onboarding"
+          />
         </div>
       </div>
     );
@@ -186,30 +185,56 @@ export default function ProfilePage() {
 
           {/* Stats row */}
           <motion.div variants={fadeUp} className="grid grid-cols-2 gap-4 mb-8">
-            <div className="border border-silver-light/40 rounded-xl p-5">
-              <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-silver-dark mb-1">
-                Albums Rated
-              </p>
-              <p className="font-serif text-2xl tracking-tight">
-                {profile.rated_albums_count}
-              </p>
-            </div>
-            <div className="border border-silver-light/40 rounded-xl p-5">
-              <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-silver-dark mb-1">
-                Member Since
-              </p>
-              <p className="font-serif text-2xl tracking-tight">
-                {formatMemberSince(profile.member_since)}
-              </p>
-            </div>
+            <StatCard label="Albums Rated" value={profile.rated_albums_count} />
+            <StatCard label="Member Since" value={formatMemberSince(profile.member_since)} />
+          </motion.div>
+
+          {/* Top 5 Ranked Albums */}
+          <motion.div variants={fadeUp} className="mb-8">
+            <SectionLabel className="mb-3">Top 5 Albums</SectionLabel>
+            {topAlbums.length > 0 ? (
+              <div className="space-y-2">
+                {topAlbums.map((album) => (
+                  <div
+                    key={album.album_id}
+                    className="flex items-center gap-3 p-3 rounded-xl border border-silver-light/30 hover:border-silver-light/60 transition-colors duration-200"
+                  >
+                    <span className="font-mono text-[10px] text-silver-dark w-5 text-right shrink-0">
+                      {album.rank}
+                    </span>
+                    <AlbumCover
+                      title={album.album_title}
+                      coverUrl={album.album_cover_url}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-serif text-sm tracking-tight truncate">
+                        {album.album_title}
+                      </p>
+                      <p className="font-mono text-[10px] text-silver-dark truncate">
+                        {album.album_artist || "Unknown Artist"}
+                      </p>
+                    </div>
+                    <span className="font-mono text-[10px] text-silver shrink-0">
+                      {album.elo}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <EmptyState
+                icon={Trophy}
+                heading="No rankings yet."
+                description="Rate and compare albums to build your personal ranking."
+                actionLabel="Start Ranking"
+                actionHref="/onboarding"
+              />
+            )}
           </motion.div>
 
           {/* Genres */}
           {genres.length > 0 && (
             <motion.div variants={fadeUp} className="mb-8">
-              <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-silver-dark mb-3">
-                Favorite Genres
-              </p>
+              <SectionLabel className="mb-3">Favorite Genres</SectionLabel>
               <div className="flex flex-wrap gap-2">
                 {genres.map((genre) => (
                   <span
@@ -226,9 +251,7 @@ export default function ProfilePage() {
           {/* Spotify */}
           {profile.spotify_username && (
             <motion.div variants={fadeUp} className="mb-10">
-              <p className="font-mono text-[10px] tracking-[0.2em] uppercase text-silver-dark mb-1">
-                Spotify
-              </p>
+              <SectionLabel className="mb-1">Spotify</SectionLabel>
               <p className="font-mono text-sm text-foreground">
                 {profile.spotify_username}
               </p>

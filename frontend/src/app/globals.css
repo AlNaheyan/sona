@@ -123,3 +123,12 @@ body {
   animation: marquee 35s linear infinite;
   will-change: transform;
 }
+
+/* Hide scrollbar */
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
