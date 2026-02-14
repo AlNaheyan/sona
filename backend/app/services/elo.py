@@ -25,6 +25,36 @@ K_PAIRWISE = 32  # Strong signal
 K_RATING = 16    # Weak signal
 
 
+async def get_user_elo_range(
+    db: AsyncSession, user_id: str
+) -> tuple[float, float]:
+    """Return (min_elo, max_elo) for a user. Defaults to (DEFAULT_ELO, DEFAULT_ELO)."""
+    result = await db.execute(
+        select(
+            func.min(UserAlbumElo.elo),
+            func.max(UserAlbumElo.elo),
+        ).where(UserAlbumElo.user_id == user_id)
+    )
+    row = result.one()
+    min_elo = row[0] if row[0] is not None else DEFAULT_ELO
+    max_elo = row[1] if row[1] is not None else DEFAULT_ELO
+    return min_elo, max_elo
+
+
+def normalize_elo(raw_elo: float, min_elo: float, max_elo: float) -> float:
+    """
+    Normalize a raw Elo score to a 0-100 display scale.
+
+    Uses min-max normalization across the user's personal Elo range.
+    Returns a value rounded to the nearest integer.
+    If all albums share the same Elo, returns 50.
+    """
+    if max_elo == min_elo:
+        return 50.0
+    normalized = ((raw_elo - min_elo) / (max_elo - min_elo)) * 100
+    return round(normalized, 1)
+
+
 def expected_score(elo_a: float, elo_b: float) -> float:
     """
     Calculate expected score for player A against player B.

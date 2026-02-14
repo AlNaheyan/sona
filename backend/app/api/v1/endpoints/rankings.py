@@ -11,6 +11,7 @@ from backend.app.models.album import Album
 from backend.app.models.rating import UserAlbumElo, NumericRating, PairwiseComparison
 from backend.app.models.user import User
 from backend.app.schemas.rating import RankedAlbumOut, PersonalRankingsResponse
+from backend.app.services.elo import get_user_elo_range, normalize_elo
 
 router = APIRouter(prefix="/rankings", tags=["rankings"])
 
@@ -30,7 +31,10 @@ async def get_my_rankings(
 
     Requires authentication.
     """
-    # Get all user Elo records, ordered by Elo descending
+    # Get user's Elo range for normalization
+    min_elo, max_elo = await get_user_elo_range(db, current_user.id)
+
+    # Get paginated Elo records, ordered by Elo descending
     result = await db.execute(
         select(UserAlbumElo)
         .where(UserAlbumElo.user_id == current_user.id)
@@ -63,6 +67,7 @@ async def get_my_rankings(
                 album_artist=artist_name,
                 album_cover_url=album.cover_url,
                 elo=round(elo.elo, 1),
+                elo_normalized=normalize_elo(elo.elo, min_elo, max_elo),
                 rating_count=elo.rating_count,
                 comparison_count=elo.comparison_count,
             )

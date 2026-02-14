@@ -18,6 +18,7 @@ interface RankedAlbum {
   album_artist: string | null;
   album_cover_url: string | null;
   elo: number;
+  elo_normalized: number;
   rating_count: number;
   comparison_count: number;
 }
@@ -219,7 +220,7 @@ function ListenedTab({
             <div className="flex items-center gap-1.5 shrink-0 mr-1">
               <TrendingUp className="w-3 h-3 text-foreground/40" />
               <span className="font-mono text-xs font-normal text-foreground/80 tabular-nums">
-                {Math.round(album.elo)}
+                {album.elo_normalized.toFixed(1)}
               </span>
             </div>
           </motion.div>

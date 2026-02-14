@@ -15,6 +15,7 @@ from backend.app.models.rating import NumericRating, UserAlbumElo
 from backend.app.models.user import User
 from backend.app.schemas.album import AlbumSearchResult, AlbumSearchResponse, AlbumOut, AlbumListResponse, AlbumDetail
 from backend.app.services.musicbrainz import musicbrainz_client
+from backend.app.services.elo import get_user_elo_range, normalize_elo
 
 router = APIRouter(prefix="/albums", tags=["albums"])
 
@@ -246,6 +247,7 @@ async def get_album_detail(
     # 7. User's personal data
     user_rating = None
     user_elo = None
+    user_elo_normalized = None
     user_rank = None
 
     if local_album:
@@ -270,6 +272,9 @@ async def get_album_detail(
         elo_record = elo_result.scalar_one_or_none()
         if elo_record:
             user_elo = elo_record.elo
+            # Normalize to 0-100
+            min_elo, max_elo = await get_user_elo_range(db, current_user.id)
+            user_elo_normalized = normalize_elo(elo_record.elo, min_elo, max_elo)
             # Compute rank: count albums with higher Elo
             rank_result = await db.execute(
                 select(func.count(UserAlbumElo.id)).where(
@@ -291,6 +296,7 @@ async def get_album_detail(
         community_bayesian_score=community_bayesian_score,
         user_rating=user_rating,
         user_elo=user_elo,
+        user_elo_normalized=user_elo_normalized,
         user_rank=user_rank,
     )
 

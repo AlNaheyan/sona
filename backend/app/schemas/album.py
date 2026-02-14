@@ -120,7 +120,8 @@ class AlbumDetail(BaseModel):
 
     # User-specific data (null if user hasn't interacted)
     user_rating: float | None = Field(None, description="User's 1-10 rating, or null if not rated")
-    user_elo: float | None = Field(None, description="User's Elo score for this album")
+    user_elo: float | None = Field(None, description="User's raw Elo score (internal)")
+    user_elo_normalized: float | None = Field(None, description="User's Elo normalized to 0-100 scale")
     user_rank: int | None = Field(None, description="User's rank for this album")
 
 

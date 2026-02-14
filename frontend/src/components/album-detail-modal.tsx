@@ -19,6 +19,7 @@ interface AlbumDetailData {
   community_bayesian_score: number | null;
   user_rating: number | null;
   user_elo: number | null;
+  user_elo_normalized: number | null;
   user_rank: number | null;
 }
 
@@ -195,6 +196,13 @@ export function AlbumDetailModal({ album, onClose }: AlbumDetailModalProps) {
         body: JSON.stringify({ mbid: album.mbid, value: selectedRating }),
       });
       setSavedRating(selectedRating);
+      // Re-fetch detail so Elo, rank, and community stats update
+      apiFetch<AlbumDetailData>(`/api/v1/albums/${album.mbid}/detail`)
+        .then((data) => {
+          if (currentMbid.current !== album.mbid) return;
+          setDetail(data);
+        })
+        .catch(() => {});
     } catch {
       // keep selection so user can retry
     } finally {
@@ -436,11 +444,11 @@ export function AlbumDetailModal({ album, onClose }: AlbumDetailModalProps) {
                     icon={TrendingUp}
                     label="Elo"
                     value={
-                      detail?.user_elo != null
-                        ? Math.round(detail.user_elo).toString()
+                      detail?.user_elo_normalized != null
+                        ? detail.user_elo_normalized.toFixed(1)
                         : "\u2014"
                     }
-                    muted={detail?.user_elo == null}
+                    muted={detail?.user_elo_normalized == null}
                     skeleton={detailLoading}
                   />
                 </div>

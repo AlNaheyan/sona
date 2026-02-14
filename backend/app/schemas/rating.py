@@ -156,7 +156,8 @@ class RankedAlbumOut(BaseModel):
     album_title: str = Field(..., description="Album title")
     album_artist: str | None = Field(None, description="Primary artist name")
     album_cover_url: str | None = Field(None, description="Cover art URL")
-    elo: float = Field(..., description="Elo rating score (starts at 1500)")
+    elo: float = Field(..., description="Raw Elo rating score (internal)")
+    elo_normalized: float = Field(..., description="Elo normalized to 0-100 scale")
     rating_count: int = Field(..., description="Number of numeric ratings for this album")
     comparison_count: int = Field(..., description="Number of pairwise comparisons involving this album")
 
@@ -172,6 +173,7 @@ class RankedAlbumOut(BaseModel):
                     "album_artist": "Radiohead",
                     "album_cover_url": "https://coverartarchive.org/...",
                     "elo": 1687.5,
+                    "elo_normalized": 85.0,
                     "rating_count": 3,
                     "comparison_count": 12,
                 }
