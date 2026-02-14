@@ -455,13 +455,28 @@ async def get_candidate_albums(
     if remaining > 0:
         community_result = await db.execute(
             base_query.where(
-                Album.rating_count >= 3,
+                Album.rating_count >= 1,
                 ~Album.id.in_(seen_ids) if seen_ids else True,
             )
             .order_by(Album.bayesian_score.desc().nullslast())
             .limit(remaining)
         )
         for album in community_result.scalars().all():
+            if album.id not in seen_ids:
+                candidates.append(album)
+                seen_ids.add(album.id)
+
+    # Priority 4: Any remaining albums (bootstrap with small DB)
+    remaining = limit - len(candidates)
+    if remaining > 0:
+        any_result = await db.execute(
+            base_query.where(
+                ~Album.id.in_(seen_ids) if seen_ids else True,
+            )
+            .order_by(Album.rating_count.desc())
+            .limit(remaining)
+        )
+        for album in any_result.scalars().all():
             if album.id not in seen_ids:
                 candidates.append(album)
                 seen_ids.add(album.id)
@@ -489,6 +504,10 @@ async def inject_exploration(
 
     num_explore = max(1, int(len(main_recommendations) * exploration_ratio))
 
+    # Exclude albums already in main recommendations
+    main_album_ids = {r.album.id for r in main_recommendations}
+    exclude_ids = user_album_ids | main_album_ids
+
     # Find albums with minimal genre overlap
     exclude_conditions = []
     for g in list(user_genres)[:3]:
@@ -497,8 +516,8 @@ async def inject_exploration(
     query = (
         select(Album)
         .where(
-            ~Album.id.in_(user_album_ids) if user_album_ids else True,
-            Album.rating_count >= 5,
+            ~Album.id.in_(exclude_ids) if exclude_ids else True,
+            Album.rating_count >= 1,
         )
         .order_by(Album.bayesian_score.desc().nullslast())
         .limit(num_explore * 3)
@@ -510,6 +529,20 @@ async def inject_exploration(
 
     result = await db.execute(query)
     explore_candidates = list(result.scalars().all())
+
+    # Fallback: if genre exclusion filtered everything, try without it
+    if not explore_candidates and exclude_conditions:
+        fallback_query = (
+            select(Album)
+            .where(
+                ~Album.id.in_(exclude_ids) if exclude_ids else True,
+            )
+            .order_by(Album.rating_count.desc())
+            .limit(num_explore * 3)
+            .options(selectinload(Album.artists))
+        )
+        result = await db.execute(fallback_query)
+        explore_candidates = list(result.scalars().all())
 
     if not explore_candidates:
         return main_recommendations
