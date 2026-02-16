@@ -62,3 +62,6 @@ logs/
 CLAUDE.md
 plan.md
 /docs
+
+# Local scripts
+scripts/
