@@ -52,6 +52,7 @@ async def get_or_create_album(db: AsyncSession, mbid: str) -> Album:
         title=mb_album.title,
         release_year=mb_album.release_year,
         cover_url=mb_album.cover_url,
+        genres=",".join(mb_album.genres) if mb_album.genres else None,
     )
     if artist:
         album.artists.append(artist)

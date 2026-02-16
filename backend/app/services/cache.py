@@ -129,6 +129,11 @@ class CacheKeys:
         """Key for cover art URL."""
         return f"cover:{mbid}"
 
+    @staticmethod
+    def genre_embeddings() -> str:
+        """Key for genre embedding model."""
+        return "ml:genre_embeddings"
+
 
 # Cache TTL values (in seconds)
 class CacheTTL:
@@ -137,6 +142,7 @@ class CacheTTL:
     SEARCH_RESULTS = 3600  # 1 hour - search results can change
     ALBUM_METADATA = 86400  # 24 hours - album metadata is stable
     COVER_ART = 604800  # 7 days - cover art URLs rarely change
+    GENRE_EMBEDDINGS = 86400  # 24 hours - rebuilt when catalog changes significantly
 
 
 # Singleton instance

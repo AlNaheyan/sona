@@ -22,6 +22,8 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from backend.app.ml.genre_cache import genre_embedding_cache
+from backend.app.ml.genre_embeddings import GenreEmbeddingModel
 from backend.app.models.album import Album
 from backend.app.models.rating import UserAlbumElo
 
@@ -38,8 +40,9 @@ class RecommendationConfig:
     candidate_limit: int = 300
     exploration_ratio: float = 0.15
     artist_cap: float = 0.25
-    min_shared_albums: int = 5
+    min_shared_albums: int = 3
     top_albums_for_content: int = 10
+    item_based_min_co_raters: int = 2
 
     @staticmethod
     def compute_weights(user_album_count: int) -> tuple[float, float]:
@@ -99,6 +102,7 @@ class RecommendationsOutput:
     similar_users_found: int = 0
     exploration_count: int = 0
     recommendation_type: str = "hybrid"
+    item_based_albums_scored: int = 0
 
 
 # ============================================================================
@@ -127,16 +131,22 @@ class ContentScorer:
     Content-based similarity scoring.
 
     Compares candidate albums against user's top-rated albums using:
-    - Genre similarity (Jaccard)
+    - Genre similarity (embedding cosine or Jaccard fallback)
     - Artist overlap (soft similarity)
     - Era similarity (temporal decay)
 
     Artist influence is capped to prevent full discography spam.
     """
 
-    def __init__(self, artist_cap: float = 0.25):
+    def __init__(
+        self,
+        artist_cap: float = 0.25,
+        genre_model: GenreEmbeddingModel | None = None,
+    ):
         self.artist_cap = artist_cap
         self.base_weights = {"genre": 0.5, "artist": 0.35, "era": 0.15}
+        self._genre_model = genre_model
+        self._album_vec_cache: dict[str, np.ndarray | None] = {}
 
     def score(self, candidate: Album, user_top_albums: list[Album]) -> ContentScore:
         """Compute content similarity score for a candidate album."""
@@ -171,6 +181,14 @@ class ContentScorer:
         )
 
     def _genre_similarity(self, candidate: Album, refs: list[Album]) -> float:
+        """Dispatch to embedding or Jaccard genre similarity."""
+        if self._genre_model is not None:
+            score = self._genre_similarity_embedding(candidate, refs)
+            if score is not None:
+                return score
+        return self._genre_similarity_jaccard(candidate, refs)
+
+    def _genre_similarity_jaccard(self, candidate: Album, refs: list[Album]) -> float:
         """Compute average Jaccard similarity across reference albums."""
         candidate_genres = parse_genres(candidate.genres)
         if not candidate_genres:
@@ -191,6 +209,35 @@ class ContentScorer:
                 count += 1
 
         return total_sim / count if count > 0 else 0.0
+
+    def _genre_similarity_embedding(
+        self, candidate: Album, refs: list[Album]
+    ) -> float | None:
+        """Compute genre similarity using embedding cosine on averaged album vectors."""
+        cand_vec = self._get_album_vec(candidate)
+        if cand_vec is None:
+            return None
+
+        total_sim = 0.0
+        count = 0
+        for ref in refs:
+            ref_vec = self._get_album_vec(ref)
+            if ref_vec is None:
+                continue
+            total_sim += self._genre_model.similarity(cand_vec, ref_vec)
+            count += 1
+
+        if count == 0:
+            return None
+
+        # Cosine similarity range is [-1, 1]; clamp to [0, 1]
+        return max(0.0, min(1.0, total_sim / count))
+
+    def _get_album_vec(self, album: Album) -> np.ndarray | None:
+        """Get album embedding vector with per-scorer caching."""
+        if album.id not in self._album_vec_cache:
+            self._album_vec_cache[album.id] = self._genre_model.album_vector(album.genres)
+        return self._album_vec_cache[album.id]
 
     def _artist_similarity(self, candidate: Album, refs: list[Album]) -> float:
         """
@@ -271,9 +318,9 @@ class CollaborativeScorer:
         )
 
         # Adaptive: relax threshold if too few matches
-        if len(users) < 3 and adaptive and min_shared > 2:
+        if len(users) < 3 and adaptive and min_shared > 1:
             users = await self._find_users_with_threshold(
-                db, target_user_id, target_album_ids, min_shared=2, max_users=max_users
+                db, target_user_id, target_album_ids, min_shared=1, max_users=max_users
             )
 
         return users
@@ -313,7 +360,7 @@ class CollaborativeScorer:
 
         # Calculate similarity for each candidate
         similarities = []
-        for other_user_id, _ in candidates:
+        for other_user_id, overlap_count in candidates:
             other_vector = await self._build_elo_vector(
                 db, other_user_id, target_album_list
             )
@@ -328,7 +375,11 @@ class CollaborativeScorer:
                 other_vector[mask].reshape(1, -1),
             )[0][0]
 
-            similarities.append((other_user_id, float(sim)))
+            # Weight similarity by overlap confidence (more shared albums = more trust)
+            overlap_confidence = min(1.0, overlap_count / 10.0)
+            weighted_sim = float(sim) * overlap_confidence
+
+            similarities.append((other_user_id, weighted_sim))
 
         similarities.sort(key=lambda x: x[1], reverse=True)
         return similarities[:max_users]
@@ -336,8 +387,8 @@ class CollaborativeScorer:
     async def _build_elo_vector(
         self, db: AsyncSession, user_id: str, album_ids: list[str]
     ) -> np.ndarray:
-        """Build Elo score vector for specified albums. Uses request-level cache."""
-        cache_key = f"{user_id}:{len(album_ids)}"
+        """Build percentile-normalized Elo vector for specified albums. Uses request-level cache."""
+        cache_key = f"{user_id}:{hash(tuple(album_ids))}"
         if cache_key in self._elo_cache:
             return self._elo_cache[cache_key]
 
@@ -349,9 +400,20 @@ class CollaborativeScorer:
         )
         elo_records = {r.album_id: r.elo for r in result.scalars().all()}
 
-        vector = np.array([elo_records.get(aid, 0) for aid in album_ids])
-        self._elo_cache[cache_key] = vector
-        return vector
+        raw = np.array([float(elo_records.get(aid, 0)) for aid in album_ids])
+
+        # Normalize to percentile ranks so different Elo ranges are comparable
+        rated_mask = raw != 0
+        if rated_mask.sum() > 1:
+            rated_values = raw[rated_mask]
+            ranks = np.argsort(np.argsort(rated_values)).astype(float) + 1
+            percentiles = ranks / len(ranks)
+            raw[rated_mask] = percentiles
+        elif rated_mask.sum() == 1:
+            raw[rated_mask] = 0.5
+
+        self._elo_cache[cache_key] = raw
+        return raw
 
     async def get_similar_users_albums(
         self,
@@ -393,6 +455,138 @@ class CollaborativeScorer:
         max_score = max(album_scores.values()) if album_scores else 1.0
         return {
             aid: CollabScore(raw_score=score, normalized=score / max_score if max_score > 0 else 0)
+            for aid, score in album_scores.items()
+        }
+
+
+# ============================================================================
+# Item-Based Collaborative Scorer
+# ============================================================================
+class ItemBasedScorer:
+    """
+    Item-based collaborative filtering.
+
+    Finds albums that tend to be co-rated highly together.
+    Works well even with few users since it exploits album-album correlations.
+    "Users who rated Blonde highly also rated channel ORANGE highly."
+    """
+
+    async def build_album_similarity(
+        self, db: AsyncSession, min_co_raters: int = 2
+    ) -> dict[str, dict[str, float]]:
+        """
+        Build album-album similarity matrix from all user Elo records.
+
+        Returns dict mapping album_id -> {album_id: correlation}.
+        """
+        # Fetch all Elo records
+        result = await db.execute(select(UserAlbumElo))
+        all_records = result.scalars().all()
+
+        # Build user -> {album: elo} map
+        user_elos: dict[str, dict[str, float]] = {}
+        for rec in all_records:
+            user_elos.setdefault(rec.user_id, {})[rec.album_id] = float(rec.elo)
+
+        # Zero-mean normalize per user
+        user_normalized: dict[str, dict[str, float]] = {}
+        for uid, albums in user_elos.items():
+            if len(albums) < 2:
+                continue
+            mean_elo = sum(albums.values()) / len(albums)
+            user_normalized[uid] = {aid: elo - mean_elo for aid, elo in albums.items()}
+
+        # Collect all album IDs
+        all_albums = set()
+        for albums in user_normalized.values():
+            all_albums.update(albums.keys())
+
+        # Build album -> list of (user_id, normalized_score) index
+        album_users: dict[str, list[tuple[str, float]]] = {}
+        for uid, albums in user_normalized.items():
+            for aid, score in albums.items():
+                album_users.setdefault(aid, []).append((uid, score))
+
+        # Compute pairwise Pearson correlation for albums sharing >= min_co_raters
+        similarity: dict[str, dict[str, float]] = {}
+        album_list = list(all_albums)
+
+        for i in range(len(album_list)):
+            a = album_list[i]
+            a_users = {uid: score for uid, score in album_users.get(a, [])}
+            for j in range(i + 1, len(album_list)):
+                b = album_list[j]
+                b_users = {uid: score for uid, score in album_users.get(b, [])}
+
+                # Find shared raters
+                shared_users = set(a_users.keys()) & set(b_users.keys())
+                if len(shared_users) < min_co_raters:
+                    continue
+
+                a_scores = np.array([a_users[u] for u in shared_users])
+                b_scores = np.array([b_users[u] for u in shared_users])
+
+                # Pearson correlation
+                denom = np.sqrt(np.sum(a_scores**2) * np.sum(b_scores**2))
+                if denom == 0:
+                    continue
+                corr = float(np.sum(a_scores * b_scores) / denom)
+
+                if corr > 0:  # Only store positive correlations
+                    similarity.setdefault(a, {})[b] = corr
+                    similarity.setdefault(b, {})[a] = corr
+
+        return similarity
+
+    async def score_candidates(
+        self,
+        db: AsyncSession,
+        user_top_album_ids: list[str],
+        user_elos: dict[str, float],
+        exclude_ids: set[str],
+        min_co_raters: int = 2,
+    ) -> dict[str, CollabScore]:
+        """
+        Score candidate albums using item-based CF.
+
+        For each of the user's top albums, propagate similarity * preference
+        to correlated albums.
+        """
+        # TODO: Cache similarity matrix in Redis at ~5K albums
+        similarity = await self.build_album_similarity(db, min_co_raters)
+
+        if not similarity:
+            return {}
+
+        # Zero-mean normalize user's own Elos for weighting
+        if user_elos:
+            mean_elo = sum(user_elos.values()) / len(user_elos)
+        else:
+            return {}
+
+        album_scores: dict[str, float] = {}
+
+        for aid in user_top_album_ids:
+            if aid not in similarity:
+                continue
+            user_pref = (user_elos.get(aid, 1500) - mean_elo)
+
+            for similar_aid, corr in similarity[aid].items():
+                if similar_aid in exclude_ids:
+                    continue
+                score = corr * user_pref
+                album_scores[similar_aid] = album_scores.get(similar_aid, 0) + score
+
+        if not album_scores:
+            return {}
+
+        # Normalize to 0-1
+        max_score = max(abs(s) for s in album_scores.values()) if album_scores else 1.0
+        return {
+            aid: CollabScore(
+                raw_score=score,
+                normalized=max(0, score / max_score) if max_score > 0 else 0,
+            )
             for aid, score in album_scores.items()
         }
 
@@ -710,7 +904,7 @@ async def get_hybrid_recommendations(
     user_top_albums = list(top_albums_result.scalars().all())
     user_genres = extract_genres(user_top_albums)
 
-    # 5. Find similar users
+    # 5. Find similar users (user-based CF)
     collab_scorer = CollaborativeScorer(elo_cache)
     similar_users = await collab_scorer.find_similar_users(
         db,
@@ -721,40 +915,67 @@ async def get_hybrid_recommendations(
         adaptive=True,
     )
 
-    # 6. Graceful fallback if weak collaborative signal
-    if len(similar_users) < 3:
-        collab_weight = max(0.1, collab_weight * 0.5)
-        content_weight = 1 - collab_weight
+    # 5b. Item-based CF
+    item_scorer = ItemBasedScorer()
+    user_elo_result = await db.execute(
+        select(UserAlbumElo).where(UserAlbumElo.user_id == user_id)
+    )
+    user_elo_map = {r.album_id: float(r.elo) for r in user_elo_result.scalars().all()}
+    user_top_album_ids = [a.id for a in user_top_albums]
+
+    item_scores = await item_scorer.score_candidates(
+        db,
+        user_top_album_ids,
+        user_elo_map,
+        user_album_ids,
+        min_co_raters=config.item_based_min_co_raters,
+    )
+    item_based_albums_scored = len(item_scores)
+
+    # 6. Blend user-based and item-based CF with adaptive ratios
+    num_similar = len(similar_users)
+    if num_similar >= 3:
+        user_cf_ratio, item_cf_ratio = 0.5, 0.5
+    elif num_similar >= 1:
+        user_cf_ratio, item_cf_ratio = 0.2, 0.8
+    else:
+        user_cf_ratio, item_cf_ratio = 0.0, 1.0
 
     # 7. Get similar users' liked albums
     collab_scores = await collab_scorer.get_similar_users_albums(
         db, similar_users, user_album_ids
     )
     similar_user_album_ids = set(collab_scores.keys())
+    item_based_album_ids = set(item_scores.keys())
 
-    # 8. Prune candidates
+    # 8. Prune candidates (include both user-based and item-based album IDs)
     candidates = await get_candidate_albums(
         db,
         user_album_ids,
         user_genres,
-        similar_user_album_ids,
+        similar_user_album_ids | item_based_album_ids,
         limit=config.candidate_limit,
     )
 
-    # 9. Score candidates
-    content_scorer = ContentScorer(artist_cap=config.artist_cap)
+    # 9. Load genre embedding model and score candidates
+    genre_model = await genre_embedding_cache.get_model(db)
+    content_scorer = ContentScorer(artist_cap=config.artist_cap, genre_model=genre_model)
     results: list[RecommendationResult] = []
 
     for album in candidates:
         c_score = content_scorer.score(album, user_top_albums)
-        col_score = collab_scores.get(album.id, CollabScore())
+        user_col = collab_scores.get(album.id, CollabScore())
+        item_col = item_scores.get(album.id, CollabScore())
 
-        final = content_weight * c_score.final + collab_weight * col_score.normalized
+        blended_collab = (
+            user_cf_ratio * user_col.normalized + item_cf_ratio * item_col.normalized
+        )
+        final = content_weight * c_score.final + collab_weight * blended_collab
 
         reasons = []
         if include_reasons:
             reasons = generate_reasons(
-                album, user_top_albums, col_score.normalized
+                album, user_top_albums, blended_collab
             )
 
         results.append(
@@ -762,7 +983,7 @@ async def get_hybrid_recommendations(
                 album=album,
                 final_score=final,
                 content_score=c_score.final,
-                collaborative_score=col_score.normalized,
+                collaborative_score=blended_collab,
                 raw_scores={
                     "genre": c_score.genre,
                     "artist": c_score.artist,
@@ -796,6 +1017,7 @@ async def get_hybrid_recommendations(
         similar_users_found=len(similar_users),
         exploration_count=exploration_count,
         recommendation_type="hybrid",
+        item_based_albums_scored=item_based_albums_scored,
     )
 
 
@@ -828,7 +1050,8 @@ async def get_similar_albums(
     candidates = list(candidates_result.scalars().all())
 
     # Score candidates
-    scorer = ContentScorer()
+    genre_model = await genre_embedding_cache.get_model(db)
+    scorer = ContentScorer(genre_model=genre_model)
     scored: list[tuple[Album, float]] = []
 
     for candidate in candidates:

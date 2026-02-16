@@ -95,6 +95,7 @@ class MusicBrainzClient:
                     "type": "album",
                     "limit": limit,
                     "fmt": "json",
+                    "inc": "genres",
                 },
                 headers={"User-Agent": USER_AGENT},
                 timeout=10.0,
@@ -122,6 +123,9 @@ class MusicBrainzClient:
                 except ValueError:
                     pass
 
+            # Parse genres
+            genres = [g["name"] for g in rg.get("genres", []) if g.get("name")]
+
             results.append(
                 AlbumSearchResult(
                     mbid=rg["id"],
@@ -130,6 +134,7 @@ class MusicBrainzClient:
                     artist_mbid=artist_mbid,
                     release_year=release_year,
                     cover_url=None,  # Fetched separately if needed
+                    genres=genres or None,
                 )
             )
 

@@ -230,6 +230,9 @@ async def get_album_detail(
     genres: list[str] = []
     if mb_result and mb_result.genres:
         genres = mb_result.genres
+        # Opportunistic backfill: persist MB genres to local album if missing
+        if local_album and not local_album.genres:
+            local_album.genres = ",".join(mb_result.genres)
     elif local_album and local_album.genres:
         genres = [g.strip() for g in local_album.genres.split(",") if g.strip()]
 
