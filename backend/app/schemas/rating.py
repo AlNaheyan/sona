@@ -29,6 +29,17 @@ class RatingCreate(BaseModel):
     }
 
 
+class NearbyAlbum(BaseModel):
+    """An album near the just-rated album in Elo space, for comparison prompts."""
+
+    album_id: str = Field(..., description="Internal album ID")
+    mbid: str = Field(..., description="MusicBrainz release-group ID")
+    title: str = Field(..., description="Album title")
+    artist_name: str | None = Field(None, description="Primary artist name")
+    cover_url: str | None = Field(None, description="Cover art URL")
+    elo: float = Field(..., description="Current Elo score")
+
+
 class RatingOut(BaseModel):
     """A user's rating for an album."""
 
@@ -41,6 +52,7 @@ class RatingOut(BaseModel):
     notes: str | None = Field(None, description="User's notes")
     created_at: str = Field(..., description="When the rating was created (ISO 8601)")
     updated_at: str = Field(..., description="When the rating was last updated (ISO 8601)")
+    nearby_albums: list[NearbyAlbum] = Field(default_factory=list, description="Albums with similar Elo for comparison prompts")
 
     model_config = {
         "from_attributes": True,

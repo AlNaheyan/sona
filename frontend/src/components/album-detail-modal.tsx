@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Star, Users, TrendingUp, Hash, BookmarkPlus, BookmarkCheck, Loader2 } from "lucide-react";
+import { X, Star, Users, TrendingUp, Hash, BookmarkPlus, BookmarkCheck, Loader2, ArrowLeftRight } from "lucide-react";
 import { AlbumCover } from "@/components/album-cover";
 import { apiFetch } from "@/lib/api";
 
@@ -30,6 +30,20 @@ interface WishlistCheckResponse {
 
 interface WishlistAddResponse {
   id: string;
+}
+
+interface NearbyAlbum {
+  album_id: string;
+  mbid: string;
+  title: string;
+  artist_name: string | null;
+  cover_url: string | null;
+  elo: number;
+}
+
+interface RatingResponse {
+  id: string;
+  nearby_albums: NearbyAlbum[];
 }
 
 export interface AlbumDetailModalProps {
@@ -124,6 +138,10 @@ export function AlbumDetailModal({ album, onClose }: AlbumDetailModalProps) {
   const [wishlistLoading, setWishlistLoading] = useState(false);
   const [wishlistSaving, setWishlistSaving] = useState(false);
 
+  // Comparison prompt state
+  const [comparisonAlbum, setComparisonAlbum] = useState<NearbyAlbum | null>(null);
+  const [comparisonSaving, setComparisonSaving] = useState(false);
+
   // Track current mbid to avoid stale updates
   const currentMbid = useRef<string | null>(null);
 
@@ -137,6 +155,7 @@ export function AlbumDetailModal({ album, onClose }: AlbumDetailModalProps) {
       setSavedRating(null);
       setInWishlist(false);
       setWishlistEntryId(null);
+      setComparisonAlbum(null);
       currentMbid.current = null;
       return;
     }
@@ -149,6 +168,7 @@ export function AlbumDetailModal({ album, onClose }: AlbumDetailModalProps) {
     setSavedRating(null);
     setInWishlist(false);
     setWishlistEntryId(null);
+    setComparisonAlbum(null);
 
     // Fetch detail (non-blocking — modal renders from props immediately)
     setDetailLoading(true);
@@ -191,11 +211,17 @@ export function AlbumDetailModal({ album, onClose }: AlbumDetailModalProps) {
     if (!album || !selectedRating || ratingSaving) return;
     setRatingSaving(true);
     try {
-      await apiFetch("/api/v1/ratings", {
+      const ratingResp = await apiFetch<RatingResponse>("/api/v1/ratings", {
         method: "POST",
         body: JSON.stringify({ mbid: album.mbid, value: selectedRating }),
       });
       setSavedRating(selectedRating);
+
+      // Show comparison prompt if nearby albums returned
+      if (ratingResp.nearby_albums?.length > 0) {
+        setComparisonAlbum(ratingResp.nearby_albums[0]);
+      }
+
       // Re-fetch detail so Elo, rank, and community stats update
       apiFetch<AlbumDetailData>(`/api/v1/albums/${album.mbid}/detail`)
         .then((data) => {
@@ -245,6 +271,35 @@ export function AlbumDetailModal({ album, onClose }: AlbumDetailModalProps) {
 
     setWishlistSaving(false);
   }, [album, inWishlist, wishlistEntryId, wishlistSaving]);
+
+  // Handle comparison pick
+  const handleComparisonPick = useCallback(async (winner: "a" | "b") => {
+    if (!album || !comparisonAlbum || comparisonSaving) return;
+    setComparisonSaving(true);
+    try {
+      await apiFetch("/api/v1/comparisons", {
+        method: "POST",
+        body: JSON.stringify({
+          mbid_a: album.mbid,
+          mbid_b: comparisonAlbum.mbid,
+          winner,
+        }),
+      });
+      setComparisonAlbum(null);
+      // Re-fetch detail for updated Elo
+      apiFetch<AlbumDetailData>(`/api/v1/albums/${album.mbid}/detail`)
+        .then((data) => {
+          if (currentMbid.current !== album.mbid) return;
+          setDetail(data);
+        })
+        .catch(() => {});
+    } catch {
+      // dismiss on error too
+      setComparisonAlbum(null);
+    } finally {
+      setComparisonSaving(false);
+    }
+  }, [album, comparisonAlbum, comparisonSaving]);
 
   // Escape key
   useEffect(() => {
@@ -463,6 +518,70 @@ export function AlbumDetailModal({ album, onClose }: AlbumDetailModalProps) {
                     from the community
                   </p>
                 )}
+
+                {/* Inline comparison prompt */}
+                <AnimatePresence>
+                  {comparisonAlbum && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.25 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="h-px bg-silver-light/30 my-5" />
+                      <div className="text-center mb-3">
+                        <div className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest text-silver-dark">
+                          <ArrowLeftRight className="w-3 h-3" />
+                          Which do you prefer?
+                        </div>
+                      </div>
+                      <div className="flex gap-3 items-stretch">
+                        {/* Album A — the just-rated album */}
+                        <button
+                          onClick={() => handleComparisonPick("a")}
+                          disabled={comparisonSaving}
+                          className="flex-1 flex items-center gap-3 p-3 rounded-xl border border-silver-light/30 bg-cream-dark/30 hover:border-foreground/30 hover:bg-cream-dark/60 transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <AlbumCover
+                            title={displayTitle}
+                            coverUrl={displayCover}
+                            size="sm"
+                          />
+                          <div className="min-w-0 text-left">
+                            <p className="font-serif text-sm truncate">{displayTitle}</p>
+                            <p className="font-mono text-[10px] text-silver-dark truncate">{displayArtist}</p>
+                          </div>
+                        </button>
+
+                        {/* Album B — the nearby album */}
+                        <button
+                          onClick={() => handleComparisonPick("b")}
+                          disabled={comparisonSaving}
+                          className="flex-1 flex items-center gap-3 p-3 rounded-xl border border-silver-light/30 bg-cream-dark/30 hover:border-foreground/30 hover:bg-cream-dark/60 transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <AlbumCover
+                            title={comparisonAlbum.title}
+                            coverUrl={comparisonAlbum.cover_url}
+                            size="sm"
+                          />
+                          <div className="min-w-0 text-left">
+                            <p className="font-serif text-sm truncate">{comparisonAlbum.title}</p>
+                            <p className="font-mono text-[10px] text-silver-dark truncate">{comparisonAlbum.artist_name ?? ""}</p>
+                          </div>
+                        </button>
+                      </div>
+                      <div className="text-center mt-2.5">
+                        <button
+                          onClick={() => setComparisonAlbum(null)}
+                          className="font-mono text-[10px] text-silver-dark hover:text-foreground transition-colors duration-150 cursor-pointer"
+                        >
+                          Skip
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             </div>
           </motion.div>

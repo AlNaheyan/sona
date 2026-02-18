@@ -45,13 +45,30 @@ def normalize_elo(raw_elo: float, min_elo: float, max_elo: float) -> float:
     """
     Normalize a raw Elo score to a 0-100 display scale.
 
-    Uses min-max normalization across the user's personal Elo range.
-    Returns a value rounded to the nearest integer.
+    Uses a fixed reference range anchored at DEFAULT_ELO (1500) with a minimum
+    spread of 200 points, so that scores don't swing wildly when a user has
+    few albums. The range expands naturally as the user's Elo spread grows.
+
+    Returns a value clamped to [0, 100] and rounded to 1 decimal place.
     If all albums share the same Elo, returns 50.
     """
     if max_elo == min_elo:
         return 50.0
-    normalized = ((raw_elo - min_elo) / (max_elo - min_elo)) * 100
+
+    # Ensure a minimum spread so early comparisons don't cause 0/100 extremes
+    min_spread = 200.0
+    center = (min_elo + max_elo) / 2
+    actual_spread = max_elo - min_elo
+
+    if actual_spread < min_spread:
+        effective_min = center - min_spread / 2
+        effective_max = center + min_spread / 2
+    else:
+        effective_min = min_elo
+        effective_max = max_elo
+
+    normalized = ((raw_elo - effective_min) / (effective_max - effective_min)) * 100
+    normalized = max(0.0, min(100.0, normalized))
     return round(normalized, 1)
 
 

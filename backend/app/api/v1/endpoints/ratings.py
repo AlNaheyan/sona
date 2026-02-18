@@ -1,7 +1,7 @@
 """Rating endpoints - numeric album rating (1-10), weak Elo signal."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import select
+from sqlalchemy import select, func, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -9,9 +9,9 @@ from backend.app.api.deps import get_current_user
 from backend.app.core.database import get_db
 from backend.app.core.rate_limit import limiter, RateLimits
 from backend.app.models.album import Album, Artist
-from backend.app.models.rating import NumericRating
+from backend.app.models.rating import NumericRating, UserAlbumElo, PairwiseComparison
 from backend.app.models.user import User
-from backend.app.schemas.rating import RatingCreate, RatingOut, RatingListResponse
+from backend.app.schemas.rating import RatingCreate, RatingOut, RatingListResponse, NearbyAlbum
 from backend.app.services.musicbrainz import musicbrainz_client
 from backend.app.services.elo import update_elo_from_rating, recalculate_elo_from_rating_change
 from backend.app.services.community import update_album_community_stats
@@ -60,6 +60,96 @@ async def get_or_create_album(db: AsyncSession, mbid: str) -> Album:
     await db.flush()
 
     return album
+
+
+async def _get_nearby_albums(
+    db: AsyncSession, user_id: str, album_id: str
+) -> list[NearbyAlbum]:
+    """Return up to 3 albums closest in Elo to the just-rated album, excluding already-compared pairs."""
+    # Get the current album's Elo
+    result = await db.execute(
+        select(UserAlbumElo).where(
+            UserAlbumElo.user_id == user_id,
+            UserAlbumElo.album_id == album_id,
+        )
+    )
+    current_elo_record = result.scalar_one_or_none()
+    if not current_elo_record:
+        return []
+
+    # Check total ranked albums — skip if < 3
+    count_result = await db.execute(
+        select(func.count()).select_from(UserAlbumElo).where(
+            UserAlbumElo.user_id == user_id,
+        )
+    )
+    total_ranked = count_result.scalar() or 0
+    if total_ranked < 3:
+        return []
+
+    current_elo = current_elo_record.elo
+
+    # Get albums already compared against this one (in either direction)
+    compared_result = await db.execute(
+        select(PairwiseComparison.album_a_id, PairwiseComparison.album_b_id).where(
+            PairwiseComparison.user_id == user_id,
+            or_(
+                PairwiseComparison.album_a_id == album_id,
+                PairwiseComparison.album_b_id == album_id,
+            ),
+        )
+    )
+    compared_pairs = compared_result.all()
+    already_compared_ids = set()
+    for row in compared_pairs:
+        if row.album_a_id == album_id:
+            already_compared_ids.add(row.album_b_id)
+        else:
+            already_compared_ids.add(row.album_a_id)
+
+    # Get nearby Elo albums sorted by distance from current Elo
+    nearby_query = (
+        select(UserAlbumElo)
+        .where(
+            UserAlbumElo.user_id == user_id,
+            UserAlbumElo.album_id != album_id,
+        )
+        .order_by(func.abs(UserAlbumElo.elo - current_elo))
+        .limit(3 + len(already_compared_ids))  # fetch extra to filter
+    )
+    nearby_result = await db.execute(nearby_query)
+    nearby_elos = nearby_result.scalars().all()
+
+    # Filter out already-compared and take top 3
+    candidates = [e for e in nearby_elos if e.album_id not in already_compared_ids][:3]
+
+    if not candidates:
+        return []
+
+    # Fetch album details for these candidates
+    candidate_album_ids = [c.album_id for c in candidates]
+    albums_result = await db.execute(
+        select(Album)
+        .where(Album.id.in_(candidate_album_ids))
+        .options(selectinload(Album.artists))
+    )
+    albums_by_id = {a.id: a for a in albums_result.scalars().all()}
+
+    nearby_albums = []
+    for candidate in candidates:
+        a = albums_by_id.get(candidate.album_id)
+        if not a or not a.mbid:
+            continue
+        nearby_albums.append(NearbyAlbum(
+            album_id=a.id,
+            mbid=a.mbid,
+            title=a.title,
+            artist_name=a.artists[0].name if a.artists else None,
+            cover_url=a.cover_url,
+            elo=candidate.elo,
+        ))
+
+    return nearby_albums
 
 
 @router.post(
@@ -142,6 +232,9 @@ async def rate_album(
     if album.artists:
         artist_name = album.artists[0].name
 
+    # Find nearby albums for comparison prompt
+    nearby_albums = await _get_nearby_albums(db, current_user.id, album.id)
+
     return RatingOut(
         id=db_rating.id,
         album_id=album.id,
@@ -152,6 +245,7 @@ async def rate_album(
         notes=db_rating.notes,
         created_at=db_rating.created_at.isoformat(),
         updated_at=db_rating.updated_at.isoformat(),
+        nearby_albums=nearby_albums,
     )
 
 
