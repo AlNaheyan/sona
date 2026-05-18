@@ -15,6 +15,8 @@ from backend.app.services.auth import (
     create_refresh_token,
     decode_refresh_token,
     hash_password,
+    is_token_revoked,
+    revoke_token,
     verify_password,
 )
 
@@ -265,13 +267,26 @@ async def refresh_tokens(
         )
 
     # Decode and validate refresh token
-    user_id = decode_refresh_token(raw_token)
-    if not user_id:
+    token_data = decode_refresh_token(raw_token)
+    if not token_data:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired refresh token",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    # Check revocation list
+    if await is_token_revoked(token_data.jti):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token has been revoked",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    user_id = token_data.user_id
+
+    # Revoke the current token before issuing a new one (true rotation)
+    await revoke_token(token_data.jti, token_data.exp)
 
     # Verify user still exists and is active
     result = await db.execute(select(User).where(User.id == user_id))
@@ -300,6 +315,13 @@ async def refresh_tokens(
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-async def logout(response: Response) -> None:
-    """Clear the HttpOnly refresh token cookie to complete logout."""
+async def logout(
+    response: Response,
+    refresh_token_cookie: str | None = Cookie(None, alias=_REFRESH_COOKIE),
+) -> None:
+    """Revoke the refresh token and clear the HttpOnly cookie."""
+    if refresh_token_cookie:
+        token_data = decode_refresh_token(refresh_token_cookie)
+        if token_data:
+            await revoke_token(token_data.jti, token_data.exp)
     _clear_refresh_cookie(response)
