@@ -391,13 +391,7 @@ export default function RegisterPage() {
                   </div>
                 </div>
                 <span className="font-mono text-[11px] text-silver-dark leading-relaxed">
-                  I agree to the{" "}
-                  <Link
-                    href="/terms"
-                    className="text-foreground hover:underline"
-                  >
-                    Terms of Service
-                  </Link>
+                  I agree to the Terms of Service
                 </span>
               </label>
               <AnimatePresence>

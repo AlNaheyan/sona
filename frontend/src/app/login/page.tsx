@@ -222,12 +222,9 @@ export default function LoginPage() {
                 <label className="block font-mono text-[10px] tracking-[0.2em] uppercase text-silver-dark">
                   Password
                 </label>
-                <Link
-                  href="/forgot-password"
-                  className="font-mono text-[10px] text-silver hover:text-foreground transition-colors duration-300"
-                >
+                <span className="font-mono text-[10px] text-silver-dark/50">
                   Forgot password?
-                </Link>
+                </span>
               </div>
               <div className="relative">
                 <input

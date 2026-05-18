@@ -972,24 +972,15 @@ function Footer() {
             </span>
           </div>
           <div className="flex items-center gap-8">
-            <a
-              href="/about"
-              className="font-mono text-[11px] text-silver-dark hover:text-foreground transition-colors duration-300 tracking-wide uppercase"
-            >
+            <span className="font-mono text-[11px] text-silver-dark/40 tracking-wide uppercase">
               About
-            </a>
-            <a
-              href="/privacy"
-              className="font-mono text-[11px] text-silver-dark hover:text-foreground transition-colors duration-300 tracking-wide uppercase"
-            >
+            </span>
+            <span className="font-mono text-[11px] text-silver-dark/40 tracking-wide uppercase">
               Privacy
-            </a>
-            <a
-              href="/terms"
-              className="font-mono text-[11px] text-silver-dark hover:text-foreground transition-colors duration-300 tracking-wide uppercase"
-            >
+            </span>
+            <span className="font-mono text-[11px] text-silver-dark/40 tracking-wide uppercase">
               Terms
-            </a>
+            </span>
           </div>
         </div>
         <div className="mt-8 pt-6 border-t border-silver-light/50 flex items-center justify-between">
