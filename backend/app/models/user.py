@@ -11,7 +11,6 @@ class User(Base, UUIDMixin, TimestampMixin):
     username: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    is_superuser: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Relationships
     numeric_ratings: Mapped[list["NumericRating"]] = relationship(
