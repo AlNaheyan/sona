@@ -1,6 +1,6 @@
 """Pydantic schemas for authentication."""
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 class UserRegister(BaseModel):
@@ -18,8 +18,17 @@ class UserRegister(BaseModel):
         ...,
         min_length=8,
         max_length=100,
-        description="Password (minimum 8 characters)",
+        description="Password (minimum 8 characters, must contain a digit and a special character)",
     )
+
+    @field_validator("password")
+    @classmethod
+    def password_complexity(cls, v: str) -> str:
+        if not any(c.isdigit() for c in v):
+            raise ValueError("Password must contain at least one digit.")
+        if not any(c in "!@#$%^&*()_+-=[]{}|;':\",./<>?" for c in v):
+            raise ValueError("Password must contain at least one special character.")
+        return v
 
     model_config = {
         "json_schema_extra": {
@@ -27,7 +36,7 @@ class UserRegister(BaseModel):
                 {
                     "email": "user@example.com",
                     "username": "music_lover",
-                    "password": "securepassword123",
+                    "password": "securepassword123!",
                 }
             ]
         }
