@@ -6,11 +6,15 @@ from sqlalchemy.orm import selectinload
 
 from backend.app.core.database import get_db
 from backend.app.schemas.album import CommunityRankedAlbum, CommunityRankingsResponse
+from backend.app.services.cache import cache_service
 from backend.app.services.community import (
     get_community_rankings,
     get_trending_albums,
     get_global_mean_rating,
 )
+
+_TRENDING_TTL = 60   # seconds
+_STATS_TTL = 60      # seconds
 
 router = APIRouter(prefix="/community", tags=["community"])
 
@@ -76,8 +80,13 @@ async def get_trending(
     """
     Get trending albums (most rated recently).
 
-    Does not require authentication.
+    Does not require authentication. Response is cached for 60 seconds.
     """
+    cache_key = f"community:trending:{limit}"
+    cached = await cache_service.get(cache_key)
+    if cached is not None:
+        return cached
+
     albums = await get_trending_albums(db, limit=limit)
 
     trending = []
@@ -95,7 +104,9 @@ async def get_trending(
             "average_rating": round(avg_rating, 2),
         })
 
-    return {"trending": trending, "count": len(trending)}
+    result = {"trending": trending, "count": len(trending)}
+    await cache_service.set(cache_key, result, ttl_seconds=_TRENDING_TTL)
+    return result
 
 
 @router.get("/stats")
@@ -105,8 +116,13 @@ async def get_community_stats(
     """
     Get community-wide statistics.
 
-    Does not require authentication.
+    Does not require authentication. Response is cached for 60 seconds.
     """
+    cache_key = "community:stats"
+    cached = await cache_service.get(cache_key)
+    if cached is not None:
+        return cached
+
     from sqlalchemy import select, func
     from backend.app.models.album import Album
     from backend.app.models.rating import NumericRating
@@ -143,9 +159,11 @@ async def get_community_stats(
             "bayesian_score": round(top_album.bayesian_score, 2) if top_album.bayesian_score else None,
         }
 
-    return {
+    stats = {
         "total_ratings": total_ratings,
         "rated_albums": rated_albums,
         "global_mean_rating": round(global_mean, 2),
         "top_album": top_album_info,
     }
+    await cache_service.set(cache_key, stats, ttl_seconds=_STATS_TTL)
+    return stats
