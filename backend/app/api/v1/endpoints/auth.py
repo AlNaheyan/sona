@@ -79,20 +79,13 @@ async def register(
 
     **Rate limit**: 3 requests per minute
     """
-    # Check if email already exists
-    result = await db.execute(select(User).where(User.email == user_in.email))
-    if result.scalar_one_or_none():
+    # Check for duplicate email or username (generic message to prevent enumeration)
+    email_result = await db.execute(select(User.id).where(User.email == user_in.email))
+    username_result = await db.execute(select(User.id).where(User.username == user_in.username))
+    if email_result.scalar_one_or_none() or username_result.scalar_one_or_none():
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered",
-        )
-
-    # Check if username already exists
-    result = await db.execute(select(User).where(User.username == user_in.username))
-    if result.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username already taken",
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Registration failed — email or username is already in use.",
         )
 
     # Create user
