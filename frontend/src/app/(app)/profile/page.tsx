@@ -1,8 +1,8 @@
 "use client";
 
-import { motion } from "framer-motion";
-import { Trophy } from "lucide-react";
-import { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Trophy, X } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/contexts/auth";
 import { apiFetch, ApiError } from "@/lib/api";
 import { stagger, fadeUp } from "@/components/motion";
@@ -65,6 +65,10 @@ export default function ProfilePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [imgFailed, setImgFailed] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const editFormRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -237,11 +241,126 @@ export default function ProfilePage() {
 
         {/* Edit Profile button */}
         <motion.div variants={fadeUp}>
-          <button className="font-mono text-sm tracking-widest uppercase py-3.5 px-10 border border-silver-light text-foreground rounded-full hover:border-foreground transition-colors duration-300">
+          <button
+            onClick={() => { setEditError(null); setEditOpen(true); }}
+            className="font-mono text-sm tracking-widest uppercase py-3.5 px-10 border border-silver-light text-foreground rounded-full hover:border-foreground transition-colors duration-300"
+          >
             Edit Profile
           </button>
         </motion.div>
       </motion.div>
+
+      {/* Edit Profile Modal */}
+      <AnimatePresence>
+        {editOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center px-4"
+          >
+            <div
+              className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+              onClick={() => setEditOpen(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 16 }}
+              transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+              className="relative bg-background border border-silver-light/40 rounded-2xl p-8 w-full max-w-md shadow-2xl"
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="font-serif text-xl tracking-tight">Edit Profile</h2>
+                <button onClick={() => setEditOpen(false)} className="text-silver-dark hover:text-foreground transition-colors">
+                  <X size={18} />
+                </button>
+              </div>
+
+              <form
+                ref={editFormRef}
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!profile) return;
+                  const fd = new FormData(e.currentTarget);
+                  setEditSaving(true);
+                  setEditError(null);
+                  try {
+                    await apiFetch("/api/v1/profile/me", {
+                      method: "PUT",
+                      body: JSON.stringify({
+                        display_name: fd.get("display_name") as string,
+                        bio: (fd.get("bio") as string) || null,
+                        spotify_username: (fd.get("spotify_username") as string) || null,
+                        favorite_genres: (fd.get("favorite_genres") as string) || null,
+                      }),
+                    });
+                    // Refresh profile data
+                    const updated = await apiFetch<ProfileData>(`/api/v1/profile/${profile.username}`);
+                    setProfile(updated);
+                    setEditOpen(false);
+                  } catch (err) {
+                    setEditError(err instanceof ApiError ? err.message : "Failed to save. Try again.");
+                  } finally {
+                    setEditSaving(false);
+                  }
+                }}
+                className="space-y-4"
+              >
+                {[
+                  { name: "display_name", label: "Display Name", type: "text", defaultValue: profile.display_name || profile.username, required: true },
+                  { name: "bio", label: "Bio", type: "textarea", defaultValue: profile.bio || "", required: false },
+                  { name: "spotify_username", label: "Spotify Username", type: "text", defaultValue: profile.spotify_username || "", required: false },
+                  { name: "favorite_genres", label: "Favorite Genres (comma-separated)", type: "text", defaultValue: profile.favorite_genres || "", required: false },
+                ].map(({ name, label, type, defaultValue, required }) => (
+                  <div key={name}>
+                    <label className="block font-mono text-[10px] tracking-[0.2em] uppercase text-silver-dark mb-1.5">
+                      {label}
+                    </label>
+                    {type === "textarea" ? (
+                      <textarea
+                        name={name}
+                        defaultValue={defaultValue}
+                        rows={3}
+                        className="w-full bg-transparent border border-silver-light/40 rounded-lg px-3 py-2 font-mono text-sm focus:outline-none focus:border-zinc-900 transition-colors resize-none"
+                      />
+                    ) : (
+                      <input
+                        type="text"
+                        name={name}
+                        defaultValue={defaultValue}
+                        required={required}
+                        className="w-full bg-transparent border border-silver-light/40 rounded-lg px-3 py-2 font-mono text-sm focus:outline-none focus:border-zinc-900 transition-colors"
+                      />
+                    )}
+                  </div>
+                ))}
+
+                {editError && (
+                  <p className="font-mono text-xs text-red-500">{editError}</p>
+                )}
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditOpen(false)}
+                    className="flex-1 font-mono text-xs uppercase tracking-widest py-3 border border-silver-light/40 rounded-full hover:border-silver-light transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={editSaving}
+                    className="flex-1 font-mono text-xs uppercase tracking-widest py-3 bg-zinc-900 text-white rounded-full hover:bg-zinc-700 transition-colors disabled:opacity-50"
+                  >
+                    {editSaving ? "Saving…" : "Save"}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
