@@ -1,6 +1,6 @@
 """Pydantic schemas for user profiles."""
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class ProfileCreate(BaseModel):
@@ -20,8 +20,15 @@ class ProfileCreate(BaseModel):
     avatar_url: str | None = Field(
         None,
         max_length=500,
-        description="Avatar image URL (optional)",
+        description="Avatar image URL (optional, must start with https://)",
     )
+
+    @field_validator("avatar_url")
+    @classmethod
+    def avatar_url_must_be_https(cls, v: str | None) -> str | None:
+        if v is not None and not v.startswith("https://"):
+            raise ValueError("avatar_url must start with https://")
+        return v
     spotify_username: str | None = Field(
         None,
         max_length=100,
@@ -58,7 +65,6 @@ class PublicProfileOut(BaseModel):
     display_name: str
     bio: str | None
     avatar_url: str | None
-    spotify_username: str | None
     favorite_genres: str | None
     rated_albums_count: int
     member_since: str
