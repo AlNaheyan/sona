@@ -1,10 +1,11 @@
 """Authentication endpoints - register, login, me."""
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api.deps import get_current_user
+from backend.app.core.config import settings
 from backend.app.core.database import get_db
 from backend.app.core.rate_limit import limiter, RateLimits
 from backend.app.models.user import User
@@ -18,6 +19,28 @@ from backend.app.services.auth import (
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+_REFRESH_COOKIE = "refresh_token"
+_REFRESH_COOKIE_PATH = "/api/v1/auth"
+
+
+def _set_refresh_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        key=_REFRESH_COOKIE,
+        value=token,
+        httponly=True,
+        secure=settings.environment == "production",
+        samesite="lax",
+        max_age=settings.refresh_token_expire_days * 86400,
+        path=_REFRESH_COOKIE_PATH,
+    )
+
+
+def _clear_refresh_cookie(response: Response) -> None:
+    response.delete_cookie(
+        key=_REFRESH_COOKIE,
+        path=_REFRESH_COOKIE_PATH,
+    )
 
 
 @router.post(
@@ -115,6 +138,7 @@ async def register(
 @limiter.limit(RateLimits.LOGIN)
 async def login(
     request: Request,
+    response: Response,
     user_in: UserLogin,
     db: AsyncSession = Depends(get_db),
 ) -> Token:
@@ -152,6 +176,9 @@ async def login(
     # Create access and refresh tokens
     access_token = create_access_token(user.id)
     refresh_token = create_refresh_token(user.id)
+
+    # Set refresh_token as HttpOnly cookie so JS cannot read it
+    _set_refresh_cookie(response, refresh_token)
 
     return Token(access_token=access_token, refresh_token=refresh_token)
 
@@ -216,26 +243,29 @@ async def get_me(
 @limiter.limit(RateLimits.LOGIN)
 async def refresh_tokens(
     request: Request,
-    token_request: RefreshTokenRequest,
+    response: Response,
+    token_request: RefreshTokenRequest | None = None,
+    refresh_token_cookie: str | None = Cookie(None, alias=_REFRESH_COOKIE),
     db: AsyncSession = Depends(get_db),
 ) -> Token:
     """
     Exchange a refresh token for new access and refresh tokens.
 
-    Use this when your access token expires. Both tokens are rotated
-    for security (the old refresh token becomes invalid).
-
-    **Token lifecycle**:
-    1. Login → receive access + refresh tokens
-    2. Use access token for API calls (30 min validity)
-    3. When access token expires, call this endpoint with refresh token
-    4. Receive new access + refresh tokens
-    5. Repeat from step 2
+    Reads the refresh token from the HttpOnly cookie set at login.
+    API clients may also pass it in the request body as a fallback.
 
     **Rate limit**: 5 requests per minute
     """
+    raw_token = refresh_token_cookie or (token_request.refresh_token if token_request else None)
+    if not raw_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     # Decode and validate refresh token
-    user_id = decode_refresh_token(token_request.refresh_token)
+    user_id = decode_refresh_token(raw_token)
     if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -264,4 +294,12 @@ async def refresh_tokens(
     access_token = create_access_token(user.id)
     refresh_token = create_refresh_token(user.id)
 
+    _set_refresh_cookie(response, refresh_token)
+
     return Token(access_token=access_token, refresh_token=refresh_token)
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout(response: Response) -> None:
+    """Clear the HttpOnly refresh token cookie to complete logout."""
+    _clear_refresh_cookie(response)
