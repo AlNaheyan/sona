@@ -32,6 +32,7 @@ interface RankedAlbum {
   album_artist: string | null;
   album_cover_url: string | null;
   elo: number;
+  elo_normalized: number;
   rating_count: number;
   comparison_count: number;
 }
@@ -196,7 +197,7 @@ export default function ProfilePage() {
                     </p>
                   </div>
                   <span className="font-mono text-[10px] text-silver shrink-0">
-                    {album.elo}
+                    {Math.round(album.elo_normalized)}
                   </span>
                 </div>
               ))}

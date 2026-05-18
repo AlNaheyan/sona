@@ -18,6 +18,7 @@ interface RankedAlbum {
   album_artist: string | null;
   album_cover_url: string | null;
   elo: number;
+  elo_normalized: number;
   rating_count: number;
   comparison_count: number;
 }
@@ -72,7 +73,7 @@ export function TopRankings({ refreshKey }: TopRankingsProps) {
         <SectionLabel>Your Top Rankings</SectionLabel>
         {albums.length > 0 && (
           <Link
-            href="/profile"
+            href="/rankings"
             className="font-mono text-[10px] tracking-[0.15em] uppercase text-silver-dark hover:text-foreground transition-colors duration-200"
           >
             View all
@@ -103,7 +104,7 @@ export function TopRankings({ refreshKey }: TopRankingsProps) {
                 </p>
               </div>
               <span className="font-mono text-[10px] text-silver shrink-0">
-                {album.elo}
+                {Math.round(album.elo_normalized)}
               </span>
             </div>
           ))}
