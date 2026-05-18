@@ -13,11 +13,11 @@ COPY pyproject.toml .
 COPY backend/ ./backend/
 COPY ml/ ./ml/
 
-# Install Python dependencies (including dev for testing)
-RUN pip install --no-cache-dir -e ".[dev]"
+# Install production Python dependencies only
+RUN pip install --no-cache-dir -e "."
 
 # Set Python path
 ENV PYTHONPATH=/app
 
-# Run the application
-CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# Run the application (no --reload in production)
+CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
