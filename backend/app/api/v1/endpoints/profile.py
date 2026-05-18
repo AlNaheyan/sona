@@ -8,7 +8,7 @@ from backend.app.api.deps import get_current_user
 from backend.app.core.database import get_db
 from backend.app.core.rate_limit import limiter, RateLimits
 from backend.app.models.profile import UserProfile
-from backend.app.models.rating import NumericRating
+from backend.app.models.rating import UserAlbumElo
 from backend.app.models.user import User
 from backend.app.schemas.profile import ProfileCreate, ProfileOut, PublicProfileOut
 
@@ -113,9 +113,9 @@ async def get_public_profile(
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
 
-    # Count rated albums
+    # Count albums in user's Elo ranking (includes pairwise comparisons, not just numeric ratings)
     count_result = await db.execute(
-        select(func.count()).where(NumericRating.user_id == user.id)
+        select(func.count()).where(UserAlbumElo.user_id == user.id)
     )
     rated_albums_count = count_result.scalar() or 0
 
@@ -124,7 +124,6 @@ async def get_public_profile(
         display_name=profile.display_name,
         bio=profile.bio,
         avatar_url=profile.avatar_url,
-        spotify_username=profile.spotify_username,
         favorite_genres=profile.favorite_genres,
         rated_albums_count=rated_albums_count,
         member_since=user.created_at.isoformat(),
