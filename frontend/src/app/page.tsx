@@ -10,6 +10,7 @@ import {
   Search,
 } from "lucide-react";
 import { useRef, useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth";
 
 /* ─────────────────────────────────────────────
@@ -136,6 +137,13 @@ function SpinningVinyl() {
    ───────────────────────────────────────────── */
 function SearchBar() {
   const [query, setQuery] = useState("");
+  const router = useRouter();
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const q = query.trim();
+    if (q) router.push(`/search?q=${encodeURIComponent(q)}`);
+  };
 
   return (
     <motion.div
@@ -144,7 +152,7 @@ function SearchBar() {
       transition={{ duration: 0.8, delay: 0.6, ease: [0, 0, 0.2, 1] }}
       className="w-full max-w-md"
     >
-      <div className="group relative">
+      <form onSubmit={handleSubmit} className="group relative">
         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-silver-dark group-focus-within:text-foreground transition-colors duration-300" />
         <input
           type="text"
@@ -153,7 +161,7 @@ function SearchBar() {
           placeholder="Search for an album..."
           className="w-full font-mono text-sm bg-cream-dark/60 border border-silver-light rounded-full py-3.5 pl-11 pr-5 text-foreground placeholder:text-silver-dark outline-none focus:border-silver-dark focus:bg-cream-dark focus:shadow-[0_0_0_4px_rgba(0,0,0,0.03)] transition-all duration-300"
         />
-      </div>
+      </form>
       <p className="font-mono text-[11px] text-silver mt-3 ml-4">
         Try &ldquo;OK Computer&rdquo; or &ldquo;Kind of Blue&rdquo;
       </p>
