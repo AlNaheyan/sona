@@ -12,7 +12,11 @@ from pydantic import BaseModel, Field
 class RatingCreate(BaseModel):
     """Request to rate an album (1-10 scale)."""
 
-    mbid: str = Field(..., description="MusicBrainz release-group ID of the album")
+    mbid: str = Field(
+        ...,
+        pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+        description="MusicBrainz release-group ID of the album",
+    )
     value: float = Field(..., ge=1.0, le=10.0, description="Rating from 1.0 to 10.0")
     notes: str | None = Field(None, max_length=1000, description="Optional notes about the rating")
 
@@ -89,8 +93,16 @@ class RatingListResponse(BaseModel):
 class ComparisonCreate(BaseModel):
     """Request to create a pairwise comparison between two albums."""
 
-    mbid_a: str = Field(..., description="MusicBrainz ID of album A")
-    mbid_b: str = Field(..., description="MusicBrainz ID of album B")
+    mbid_a: str = Field(
+        ...,
+        pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+        description="MusicBrainz ID of album A",
+    )
+    mbid_b: str = Field(
+        ...,
+        pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+        description="MusicBrainz ID of album B",
+    )
     winner: Literal["a", "b", "tie"] = Field(
         ..., description="Which album is preferred: 'a', 'b', or 'tie'"
     )
