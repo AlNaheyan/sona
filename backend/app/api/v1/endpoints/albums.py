@@ -2,6 +2,8 @@
 
 import asyncio
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, Query, HTTPException, Request
 from sqlalchemy import select, func, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -131,7 +133,7 @@ async def list_albums(
     db: AsyncSession = Depends(get_db),
     limit: int = Query(20, ge=1, le=100, description="Number of albums to return"),
     offset: int = Query(0, ge=0, description="Number of albums to skip"),
-    sort_by: str = Query("rating_count", description="Sort by: rating_count, bayesian_score, title, release_year"),
+    sort_by: Literal["rating_count", "bayesian_score", "title", "release_year"] = Query("rating_count", description="Sort field"),
 ) -> AlbumListResponse:
     """
     List albums from local database.
