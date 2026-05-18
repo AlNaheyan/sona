@@ -12,6 +12,7 @@ import { apiFetch } from "@/lib/api";
 /* ─── Types ─── */
 interface SuggestedAlbum {
   id: string;
+  mbid: string | null;
   title: string;
   artist_name: string | null;
   cover_url: string | null;
@@ -77,8 +78,8 @@ export function ComparisonSuggestion({
       await apiFetch("/api/v1/comparisons", {
         method: "POST",
         body: JSON.stringify({
-          mbid_a: suggestion.album_a.id,
-          mbid_b: suggestion.album_b.id,
+          mbid_a: suggestion.album_a.mbid,
+          mbid_b: suggestion.album_b.mbid,
           winner,
         }),
       });

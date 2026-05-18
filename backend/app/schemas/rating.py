@@ -210,6 +210,7 @@ class SuggestedAlbum(BaseModel):
     """Album info for comparison suggestion."""
 
     id: str = Field(..., description="Internal album ID")
+    mbid: str | None = Field(None, description="MusicBrainz release-group ID — use this as mbid_a/mbid_b when submitting a comparison")
     title: str = Field(..., description="Album title")
     artist_name: str | None = Field(None, description="Primary artist name")
     cover_url: str | None = Field(None, description="Cover art URL")

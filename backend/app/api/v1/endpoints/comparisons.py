@@ -296,6 +296,7 @@ async def get_suggestions(
             ComparisonSuggestionOut(
                 album_a=SuggestedAlbum(
                     id=s.album_a.id,
+                    mbid=s.album_a.mbid,
                     title=s.album_a.title,
                     artist_name=artist_a,
                     cover_url=s.album_a.cover_url,
@@ -304,6 +305,7 @@ async def get_suggestions(
                 ),
                 album_b=SuggestedAlbum(
                     id=s.album_b.id,
+                    mbid=s.album_b.mbid,
                     title=s.album_b.title,
                     artist_name=artist_b,
                     cover_url=s.album_b.cover_url,
