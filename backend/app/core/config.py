@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
 
+    # CORS — comma-separated list of allowed origins, or JSON array
+    # Example: CORS_ORIGINS=https://ratemyalbum.com,https://www.ratemyalbum.com
+    cors_origins: list[str] = ["http://localhost:3000"]
+
     # Last.fm (optional, for supplementary data)
     lastfm_api_key: str = ""
 
