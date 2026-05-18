@@ -20,6 +20,7 @@ from backend.app.models.base import Base
 from backend.app.models import Album, Artist, User, NumericRating  # noqa: F401 - for table creation
 from backend.app.api.v1 import api_router
 from backend.app.middleware.request_logging import RequestLoggingMiddleware
+from backend.app.middleware.security_headers import SecurityHeadersMiddleware
 from backend.app.services.health import get_system_health, get_liveness, get_readiness
 
 
@@ -148,6 +149,8 @@ app.add_middleware(
 
 # Request logging middleware (adds request ID, timing, structured logs)
 app.add_middleware(RequestLoggingMiddleware)
+# Security headers on all responses
+app.add_middleware(SecurityHeadersMiddleware)
 
 # Include API routes
 app.include_router(api_router)
