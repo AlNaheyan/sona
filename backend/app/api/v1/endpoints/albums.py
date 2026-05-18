@@ -131,7 +131,7 @@ async def list_albums(
     db: AsyncSession = Depends(get_db),
     limit: int = Query(20, ge=1, le=100, description="Number of albums to return"),
     offset: int = Query(0, ge=0, description="Number of albums to skip"),
-    sort_by: str = Query("rating_count", description="Sort by: rating_count, community_mean, title, release_year"),
+    sort_by: str = Query("rating_count", description="Sort by: rating_count, bayesian_score, title, release_year"),
 ) -> AlbumListResponse:
     """
     List albums from local database.
@@ -145,8 +145,8 @@ async def list_albums(
     # Build query with sorting
     query = select(Album).options(selectinload(Album.artists))
 
-    if sort_by == "community_mean":
-        query = query.order_by(Album.community_mean.desc().nullslast())
+    if sort_by == "bayesian_score":
+        query = query.order_by(Album.bayesian_score.desc().nullslast())
     elif sort_by == "title":
         query = query.order_by(Album.title.asc())
     elif sort_by == "release_year":
@@ -168,7 +168,7 @@ async def list_albums(
                 release_year=a.release_year,
                 cover_url=a.cover_url,
                 artist_name=a.artists[0].name if a.artists else None,
-                community_mean=a.community_mean,
+                bayesian_score=a.bayesian_score,
                 rating_count=a.rating_count,
             )
             for a in albums
