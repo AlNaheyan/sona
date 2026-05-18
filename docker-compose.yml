@@ -12,9 +12,9 @@ services:
     environment:
       - DATABASE_URL=postgresql+asyncpg://ratemyalbum:ratemyalbum_secret@db:5432/ratemyalbum
       - REDIS_URL=redis://redis:6379/0
-      - SECRET_KEY=dev-secret-key-change-in-production
-      - ENVIRONMENT=development
-      - DEBUG=true
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - DEBUG=${DEBUG:-true}
     depends_on:
       db:
         condition: service_healthy
@@ -58,8 +58,8 @@ services:
     environment:
       - DATABASE_URL=postgresql+asyncpg://ratemyalbum:ratemyalbum_secret@db:5432/ratemyalbum
       - REDIS_URL=redis://redis:6379/0
-      - SECRET_KEY=dev-secret-key-change-in-production
-      - ENVIRONMENT=development
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
     depends_on:
       db:
         condition: service_healthy
@@ -78,8 +78,8 @@ services:
     environment:
       - DATABASE_URL=postgresql+asyncpg://ratemyalbum:ratemyalbum_secret@db:5432/ratemyalbum
       - REDIS_URL=redis://redis:6379/0
-      - SECRET_KEY=dev-secret-key-change-in-production
-      - ENVIRONMENT=development
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
     depends_on:
       - redis
       - celery-worker

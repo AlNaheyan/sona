@@ -1,4 +1,12 @@
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_UNSAFE_KEYS = {
+    "dev-secret-key-change-in-production",
+    "secret",
+    "changeme",
+    "insecure",
+}
 
 
 class Settings(BaseSettings):
@@ -29,6 +37,18 @@ class Settings(BaseSettings):
     # Logging
     log_level: str = "INFO"
     log_format: str = "json"  # "json" for production, "text" for development
+
+    @model_validator(mode="after")
+    def validate_production_settings(self) -> "Settings":
+        if self.environment == "production":
+            if self.secret_key in _UNSAFE_KEYS or self.secret_key.startswith("dev-"):
+                raise ValueError(
+                    "SECRET_KEY must be set to a strong random value in production. "
+                    "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+                )
+            if self.debug:
+                raise ValueError("DEBUG must be False in production.")
+        return self
 
 
 settings = Settings()
