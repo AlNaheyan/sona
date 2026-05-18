@@ -7,6 +7,7 @@ import { apiFetch } from "@/lib/api";
 import { stagger } from "@/components/motion";
 import { DashboardHeader } from "./sections/dashboard-header";
 import { QuickStats } from "./sections/quick-stats";
+import { ComparisonSuggestion } from "./sections/comparison-suggestion";
 import { FeaturedLists } from "./sections/featured-lists";
 import { Recommendations } from "./sections/recommendations";
 import { Trending } from "./sections/trending";
@@ -51,6 +52,7 @@ export default function DashboardPage() {
           stats={stats}
         />
         <QuickStats stats={stats} isLoading={statsLoading} />
+        <ComparisonSuggestion onComparisonSubmitted={fetchStats} />
         <FeaturedLists />
         <Recommendations />
         <Trending />
