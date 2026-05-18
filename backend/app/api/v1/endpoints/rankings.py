@@ -44,15 +44,18 @@ async def get_my_rankings(
     )
     elo_records = result.scalars().all()
 
+    # Bulk fetch all albums in one query instead of N+1
+    album_ids = [elo.album_id for elo in elo_records]
+    albums_result = await db.execute(
+        select(Album)
+        .where(Album.id.in_(album_ids))
+        .options(selectinload(Album.artists))
+    )
+    album_by_id = {a.id: a for a in albums_result.scalars().all()}
+
     rankings = []
     for i, elo in enumerate(elo_records, start=offset + 1):
-        # Fetch album details (eagerly load artists)
-        album_result = await db.execute(
-            select(Album)
-            .where(Album.id == elo.album_id)
-            .options(selectinload(Album.artists))
-        )
-        album = album_result.scalar_one_or_none()
+        album = album_by_id.get(elo.album_id)
         if not album:
             continue
 

@@ -270,21 +270,22 @@ async def get_my_ratings(
     )
     ratings = result.scalars().all()
 
+    # Bulk fetch albums instead of N+1 queries
+    album_ids = [r.album_id for r in ratings]
+    albums_result = await db.execute(
+        select(Album)
+        .where(Album.id.in_(album_ids))
+        .options(selectinload(Album.artists))
+    )
+    album_by_id = {a.id: a for a in albums_result.scalars().all()}
+
     rating_list = []
     for r in ratings:
-        # Fetch album details (eagerly load artists)
-        album_result = await db.execute(
-            select(Album)
-            .where(Album.id == r.album_id)
-            .options(selectinload(Album.artists))
-        )
-        album = album_result.scalar_one_or_none()
+        album = album_by_id.get(r.album_id)
         if not album:
             continue
 
-        artist_name = None
-        if album.artists:
-            artist_name = album.artists[0].name
+        artist_name = album.artists[0].name if album.artists else None
 
         rating_list.append(
             RatingOut(
