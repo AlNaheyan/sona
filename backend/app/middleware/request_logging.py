@@ -1,5 +1,6 @@
 """Request logging middleware — logs every request with context and timing."""
 
+import re
 import time
 
 from fastapi import Request, Response
@@ -12,6 +13,8 @@ from backend.app.core.logging import (
     set_request_context,
 )
 
+_UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     """
@@ -23,7 +26,8 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        request_id = request.headers.get("X-Request-ID", new_request_id())
+        client_id = request.headers.get("X-Request-ID", "")
+        request_id = client_id if _UUID_RE.match(client_id) else new_request_id()
         start_time = time.monotonic()
 
         # Set request context for all logs within this request
